@@ -2,26 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+@layer base {
+  :root {
+    /* SareeViz brand – Deep Pink / Magenta palette */
+    --background: 330 10% 99%;
+    --foreground: 330 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 330 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 330 10% 10%;
+    --primary: 335 78% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 335 30% 96%;
+    --secondary-foreground: 335 40% 25%;
+    --muted: 330 10% 96%;
+    --muted-foreground: 330 5% 45%;
+    --accent: 335 30% 94%;
+    --accent-foreground: 335 40% 25%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 330 5% 90%;
+    --input: 330 5% 90%;
+    --ring: 335 78% 52%;
+    --radius: 0.625rem;
+  }
+  .dark {
+    --background: 330 10% 8%;
+    --foreground: 330 5% 96%;
+    --card: 330 10% 12%;
+    --card-foreground: 330 5% 96%;
+    --popover: 330 10% 12%;
+    --popover-foreground: 330 5% 96%;
+    --primary: 335 78% 60%;
+    --primary-foreground: 330 10% 8%;
+    --secondary: 330 10% 18%;
+    --secondary-foreground: 330 5% 96%;
+    --muted: 330 10% 18%;
+    --muted-foreground: 330 5% 60%;
+    --accent: 330 10% 18%;
+    --accent-foreground: 330 5% 96%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 330 10% 18%;
+    --input: 330 10% 18%;
+    --ring: 335 78% 60%;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+}
+
+/* ——— Custom Utilities ——— */
+
+/* Gradient text helper */
+.gradient-text {
+  background: linear-gradient(135deg, #db2777, #e11d48, #db2777);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glassmorphism card */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.dark .glass {
+  background: rgba(30, 20, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Subtle animated gradient background */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Glow effect on hover */
+.glow-hover {
+  transition: box-shadow 0.3s ease;
+}
+.glow-hover:hover {
+  box-shadow: 0 0 30px rgba(219, 39, 119, 0.25), 0 0 60px rgba(219, 39, 119, 0.1);
 }
