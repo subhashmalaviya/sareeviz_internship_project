@@ -6,13 +6,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import type { User } from "@supabase/supabase-js";
+
 const navLinks = [
   { name: "Features", href: "#features" },
   { name: "How It Works", href: "#how-it-works" },
   { name: "Pricing", href: "#pricing" },
 ];
 
-export default function Navbar() {
+export default function Navbar({ user }: { user?: User | null }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -48,16 +50,28 @@ export default function Navbar() {
 
         {/* Desktop CTA */}
         <div className="hidden items-center gap-3 md:flex">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/login">Log in</Link>
-          </Button>
-          <Button
-            size="sm"
-            className="bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02]"
-            asChild
-          >
-            <Link href="/dashboard">Get Started Free</Link>
-          </Button>
+          {user ? (
+            <Button
+              size="sm"
+              className="bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02]"
+              asChild
+            >
+              <Link href="/dashboard">Dashboard</Link>
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login">Log in</Link>
+              </Button>
+              <Button
+                size="sm"
+                className="bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02]"
+                asChild
+              >
+                <Link href="/login">Get Started Free</Link>
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -92,16 +106,30 @@ export default function Navbar() {
                 </Link>
               ))}
               <div className="flex flex-col gap-2 pt-2 border-t border-border">
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/login">Log in</Link>
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-gradient-to-r from-brand-500 to-brand-700 text-white"
-                  asChild
-                >
-                  <Link href="/dashboard">Get Started Free</Link>
-                </Button>
+                {user ? (
+                  <Button
+                    size="sm"
+                    className="bg-gradient-to-r from-brand-500 to-brand-700 text-white"
+                    onClick={() => setMobileOpen(false)}
+                    asChild
+                  >
+                    <Link href="/dashboard">Dashboard</Link>
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => setMobileOpen(false)} asChild>
+                      <Link href="/login">Log in</Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-gradient-to-r from-brand-500 to-brand-700 text-white"
+                      onClick={() => setMobileOpen(false)}
+                      asChild
+                    >
+                      <Link href="/login">Get Started Free</Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
