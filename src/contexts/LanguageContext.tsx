@@ -107,7 +107,6 @@ const translations: Record<string, Record<Language, string>> = {
   "Aspect Ratio": { en: "Aspect Ratio", hi: "पहलू अनुपात" },
   "Resolution": { en: "Resolution", hi: "रिज़ॉल्यूशन" },
   "2:3 - Tall Portrait (4:6, 6:9,": { en: "2:3 - Tall Portrait (4:6, 6:9,", hi: "2:3 - टॉल पोर्ट्रेट (4:6, 6:9," },
-  "4K": { en: "4K", hi: "4K" },
   "Pose Prompt Library": { en: "Pose Prompt Library", hi: "पोज़ प्रॉम्प्ट लाइब्रेरी" },
   "Pose Image Library": { en: "Pose Image Library", hi: "पोज़ इमेज लाइब्रेरी" },
   "Number of Poses": { en: "Number of Poses", hi: "पोज़ की संख्या" },

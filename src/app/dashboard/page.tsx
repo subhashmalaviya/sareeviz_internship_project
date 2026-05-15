@@ -170,7 +170,7 @@ export default function StudioPage() {
                   ))}
                 </RadioGroup>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger render={
                     <button className={`w-full flex items-center justify-between border rounded-lg px-3 py-2.5 text-sm transition-colors ${
                       !["saree", "lehenga", "kurti", "salwar suit"].includes(generateFor.toLowerCase())
                         ? "border-pink-500 text-pink-600 bg-pink-50/50"
@@ -181,7 +181,7 @@ export default function StudioPage() {
                         : t("More")}
                       <ChevronDown className="h-4 w-4" />
                     </button>
-                  </DropdownMenuTrigger>
+                  } />
                   <DropdownMenuContent 
                     align="start" 
                     className="w-[var(--radix-dropdown-menu-trigger-width)] bg-white rounded-lg border-gray-200 shadow-lg p-1"
@@ -253,7 +253,7 @@ export default function StudioPage() {
               )}
 
               {/* Sub-accordions under Step 1 */}
-              <Accordion type="multiple" className="space-y-2">
+              <Accordion multiple className="space-y-2">
                 <AccordionItem value="item-1" className="bg-white rounded-xl border border-gray-200 px-4">
                   <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
                     {t("Add Blouse / Dupatta / Pallu Design")}
@@ -386,7 +386,7 @@ export default function StudioPage() {
 
             {/* Step 2 */}
             <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-              <Accordion type="single" collapsible>
+              <Accordion>
                 <AccordionItem value="step-2" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
                     <div className="flex items-center gap-2.5">
@@ -644,7 +644,7 @@ export default function StudioPage() {
 
             {/* Step 3 */}
             <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-              <Accordion type="single" collapsible>
+              <Accordion>
                 <AccordionItem value="step-3" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
                     <div className="flex items-center gap-2.5">
@@ -776,7 +776,7 @@ export default function StudioPage() {
 
             {/* Step 4 */}
             <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-              <Accordion type="single" collapsible>
+              <Accordion>
                 <AccordionItem value="step-4" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
                     <div className="flex items-center gap-2.5">
