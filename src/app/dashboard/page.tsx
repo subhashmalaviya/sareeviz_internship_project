@@ -5,14 +5,14 @@ import { createClient } from "@/utils/supabase/server";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  await supabase.auth.getUser();
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Welcome back!</h1>
         <p className="text-muted-foreground mt-2">
-          Here's an overview of your AI fashion studio.
+          Here&apos;s an overview of your AI fashion studio.
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export default async function DashboardPage() {
           </div>
           <h3 className="text-lg font-medium text-foreground">No photos yet</h3>
           <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
-            You haven't generated any model photos yet. Start your first generation in the studio.
+            You haven&apos;t generated any model photos yet. Start your first generation in the studio.
           </p>
           <Button className="mt-6 bg-brand-600 hover:bg-brand-700" asChild>
             <Link href="/dashboard/studio">Go to Studio</Link>

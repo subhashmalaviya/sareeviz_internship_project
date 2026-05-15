@@ -40,8 +40,9 @@ export default function LoginPage() {
       if (error) throw error;
       
       setStep("otp");
-    } catch (err: any) {
-      setError(err.message || "Failed to send OTP. Ensure your phone provider is configured in Supabase.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send OTP. Ensure your phone provider is configured in Supabase.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -69,8 +70,9 @@ export default function LoginPage() {
       // Successfully logged in
       router.push("/dashboard");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Invalid OTP. Please try again.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid OTP. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -87,8 +89,10 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
       setLoading(false);
     }
   };
