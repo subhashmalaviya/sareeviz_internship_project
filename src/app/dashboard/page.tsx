@@ -64,7 +64,7 @@ export default function StudioPage() {
   const [selectedImagePoses, setSelectedImagePoses] = useState<number[]>([]);
   const [brandName, setBrandName] = useState("");
   const [designNumber, setDesignNumber] = useState("");
-  const [fontSize, setFontSize] = useState("4");
+  const [fontSize, setFontSize] = useState(4.0);
   const [isBold, setIsBold] = useState(true);
   const [fontColor, setFontColor] = useState("white");
   const [textPosition, setTextPosition] = useState("top_right");
@@ -74,6 +74,12 @@ export default function StudioPage() {
   const [activeTab, setActiveTab] = useState<"image" | "video" | "combine">("image");
   const [rightTab, setRightTab] = useState<"generate" | "history">("generate");
   const [selectedVideo, setSelectedVideo] = useState<{title: string, src: string} | null>(null);
+
+  // Video specific state
+  const [videoCategory, setVideoCategory] = useState("apparel");
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoDuration, setVideoDuration] = useState("15s");
+  const [videoAspectRatio, setVideoAspectRatio] = useState("9:16 (Reels/Shorts)");
 
   const handleOptimiseEcommerceChange = (checked: boolean) => {
     setOptimiseEcommerce(checked);
@@ -128,7 +134,9 @@ export default function StudioPage() {
 
           {/* Form content */}
           <div className="px-5 py-5 space-y-6">
-            {/* Step 1: Upload Design */}
+            {activeTab === "image" ? (
+              <>
+                {/* Step 1: Upload Design */}
             <div className="space-y-4">
               <div className="flex items-center gap-2.5">
                 <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
@@ -970,19 +978,30 @@ export default function StudioPage() {
                           <div className="space-y-2">
                             <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
                             <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-500">{t("Size:")}</span>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center border border-gray-200 rounded bg-white overflow-hidden h-7">
                                   <input 
-                                    type="number" 
-                                    min="0.5"
-                                    max="15"
-                                    step="0.5"
-                                    value={fontSize}
-                                    onChange={(e) => setFontSize(e.target.value)}
-                                    className="w-14 border border-gray-300 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-pink-500"
+                                    type="text" 
+                                    value={fontSize} 
+                                    readOnly
+                                    className="w-8 text-center text-[11px] font-bold text-gray-700 bg-transparent outline-none"
                                   />
-                                  <span className="text-xs text-gray-500">%</span>
+                                  <span className="text-[10px] text-gray-400 mr-1">%</span>
+                                  <div className="flex flex-col border-l border-gray-100">
+                                    <button 
+                                      onClick={() => setFontSize(prev => Math.min(15, prev + 0.5))}
+                                      className="p-0.5 hover:bg-gray-50 text-gray-400 border-b border-gray-100 leading-[0]"
+                                    >
+                                      <ChevronUp className="h-2 w-2" />
+                                    </button>
+                                    <button 
+                                      onClick={() => setFontSize(prev => Math.max(0.5, prev - 0.5))}
+                                      className="p-0.5 hover:bg-gray-50 text-gray-400 leading-[0]"
+                                    >
+                                      <ChevronDown className="h-2 w-2" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                               <label className="flex items-center gap-1.5 cursor-pointer">
@@ -999,7 +1018,7 @@ export default function StudioPage() {
                                 <div className="flex gap-1.5 items-center">
                                   <button 
                                     onClick={() => setFontColor("dark")}
-                                    className={`w-[18px] h-[18px] rounded-full bg-gray-500 border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
+                                    className={`w-[18px] h-[18px] rounded-full bg-black border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
                                   />
                                   <button 
                                     onClick={() => setFontColor("white")}
@@ -1134,7 +1153,6 @@ export default function StudioPage() {
                             <option value="2K">{t("2K")}</option>
                             <option value="4K">{t("4K")}</option>
                           </select>
-                          <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
                         </div>
                       </div>
                     </div>
@@ -1142,44 +1160,511 @@ export default function StudioPage() {
                 </AccordionItem>
               </Accordion>
             </div>
+          </>
+        ) : activeTab === "video" ? (
+          <div className="space-y-6">
+            {/* Step 1: Category */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                  1
+                </span>
+                <h2 className="text-base font-bold text-gray-900">{t("Category")}</h2>
+              </div>
+              <RadioGroup
+                value={videoCategory}
+                onValueChange={setVideoCategory}
+                className="grid grid-cols-2 gap-2.5"
+              >
+                {[
+                  { id: "apparel", label: t("Apparel"), icon: <ImageIcon className="h-4 w-4" /> },
+                  { id: "jewelry", label: t("Jewelry"), icon: <RefreshCcw className="h-4 w-4" /> },
+                ].map((item) => (
+                  <Label
+                    key={item.id}
+                    htmlFor={`video-${item.id}`}
+                    className={`flex items-center justify-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer text-sm transition-all ${
+                      videoCategory === item.id
+                        ? "border-pink-500 bg-pink-50/50 text-pink-600"
+                        : "border-gray-200 hover:bg-gray-50 text-gray-600"
+                    }`}
+                  >
+                    <RadioGroupItem
+                      value={item.id}
+                      id={`video-${item.id}`}
+                      className="sr-only"
+                    />
+                    {item.icon}
+                    <span className="font-semibold">{item.label}</span>
+                  </Label>
+                ))}
+              </RadioGroup>
+            </div>
+
+            {/* Step 2: Reference Image */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                  2
+                </span>
+                <h2 className="text-base font-bold text-gray-900">{t("Reference Image")} <span className="text-red-500">*</span></h2>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">{t("Upload an image to animate into video")}</p>
+                <div className="border-2 border-dashed border-pink-300 rounded-2xl bg-gray-50 overflow-hidden relative group cursor-pointer hover:border-pink-400 transition-colors h-80">
+                  <img 
+                    src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80" 
+                    alt="Reference Video Placeholder"
+                    className="absolute inset-0 w-full h-full object-cover opacity-70"
+                  />
+                  <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
+                  <div className="relative z-10 h-full flex flex-col items-center justify-center">
+                    <div className="bg-white rounded-full p-2.5 shadow-sm border border-gray-100 mb-2">
+                      <Upload className="h-5 w-5 text-pink-500" />
+                    </div>
+                    <span className="bg-white/90 backdrop-blur-sm px-4 py-1.5 rounded-full text-xs font-bold text-gray-900 shadow-sm border border-gray-100">
+                      {t("Upload an image like this")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3: Edit / Style Prompt */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                  3
+                </span>
+                <h2 className="text-base font-bold text-gray-900">{t("Edit / Style Prompt")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></h2>
+              </div>
+              <div className="relative group">
+                <textarea 
+                  value={videoPrompt}
+                  onChange={(e) => setVideoPrompt(e.target.value)}
+                  placeholder="e.g. Add 4 color transitions: mehendi (starting color), pista, ferozi, and rani. Include Bollywood music. No quick or abnormal movements."
+                  className="w-full h-24 border border-gray-200 rounded-lg p-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent resize-none bg-white transition-all group-hover:border-gray-300"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button className="p-0.5 hover:bg-gray-100 rounded text-gray-400">
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button className="p-0.5 hover:bg-gray-100 rounded text-gray-400">
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <button 
+                onClick={() => setVideoPrompt(t("video_example_prompt"))}
+                className="flex items-center gap-1.5 text-xs font-bold text-purple-600 hover:text-purple-700 transition-colors"
+              >
+                <Wand2 className="h-3 w-3" /> {t("Use example prompt")}
+              </button>
+            </div>
+
+            {/* Step 4: Video Settings */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                  4
+                </span>
+                <h2 className="text-base font-bold text-gray-900">{t("Video Settings")}</h2>
+              </div>
+              
+              <div className="space-y-2.5">
+                <span className="text-sm font-semibold text-gray-700">{t("Duration")}</span>
+                <div className="flex flex-wrap gap-2">
+                  {["6s", "10s", "15s", "30s", "45s"].map((dur) => (
+                    <button
+                      key={dur}
+                      onClick={() => setVideoDuration(dur)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
+                        videoDuration === dur
+                          ? "border-pink-500 bg-pink-50 text-pink-600 ring-2 ring-pink-500/10"
+                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {dur}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[10px] text-gray-400 font-medium ml-1">
+                  {videoDuration === "15s" ? "15 credits" : 
+                   videoDuration === "6s" ? "6 credits" :
+                   videoDuration === "10s" ? "10 credits" :
+                   videoDuration === "30s" ? "30 credits" : "45 credits"}
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                <span className="text-sm font-semibold text-gray-700">{t("Aspect Ratio")}</span>
+                <div className="relative">
+                  <select 
+                    value={videoAspectRatio}
+                    onChange={(e) => setVideoAspectRatio(e.target.value)}
+                    className="w-full appearance-none border border-gray-300 rounded-lg px-4 py-2.5 pr-10 text-sm text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white shadow-sm"
+                  >
+                    <option value="9:16 (Reels/Shorts)">{t("9:16 (Reels/Shorts)")}</option>
+                    <option value="3:4 (Portrait)">{t("3:4 (Portrait)")}</option>
+                    <option value="2:3 (Tall Portrait)">{t("2:3 (Tall Portrait)")}</option>
+                    <option value="1:1 (Square)">{t("1:1 (Square)")}</option>
+                    <option value="4:3 (Landscape)">{t("4:3 (Landscape)")}</option>
+                    <option value="3:2 (Wide)">{t("3:2 (Wide)")}</option>
+                    <option value="16:9 (YouTube)">{t("16:9 (YouTube)")}</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                </div>
+                <p className="text-[10px] text-gray-400 ml-1 font-medium">{t("Select output format")}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button className="w-full h-11 bg-slate-400 text-white rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 opacity-80 cursor-not-allowed">
+                <Sparkles className="h-4 w-4" /> {t("Preview Generation Plan")}
+              </button>
+              <button className="w-full h-11 border border-pink-200 bg-white text-pink-600 rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-pink-50 transition-colors">
+                <Video className="h-4 w-4" /> {t("Add Music and Logo")}
+              </button>
+            </div>
+          </div>
+            ) : activeTab === "combine" ? (
+              <div className="space-y-6">
+                {/* Step 1: Upload Model Images */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                      1
+                    </span>
+                    <h2 className="text-base font-bold text-gray-900">{t("Upload Model Images")}</h2>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">{t("Upload 2-6 model photos wearing different designs to combine into one image")}</p>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-8 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-3 mb-3">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2: Background Image */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                      2
+                    </span>
+                    <h2 className="text-base font-bold text-gray-900">{t("Background Image")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></h2>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">{t("Upload a preferred background. If not provided, AI will use a background from one of the model images.")}</p>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-8 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Branding Details */}
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                  <Accordion defaultValue={["step-3"]}>
+                    <AccordionItem value="step-3" className="border-0">
+                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                            3
+                          </span>
+                          <h2 className="text-base font-bold text-gray-900">{t("Branding Details")}</h2>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-4 px-4 pl-12">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Brand Logo")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                          </div>
+                          <label className="flex items-start gap-2 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900 transition-colors">
+                                {t("Add brand logo as center watermark")}
+                              </span>
+                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                                {t("Places a faint brand logo in the center of the image (requires brand logo upload).")}
+                              </span>
+                            </div>
+                          </label>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Brand Name")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <input 
+                              type="text"
+                              value={brandName}
+                              onChange={(e) => setBrandName(e.target.value)}
+                              placeholder={t("e.g. Royal Silks")}
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 transition-all hover:border-gray-300"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Design Number")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <input 
+                              type="text"
+                              value={designNumber}
+                              onChange={(e) => setDesignNumber(e.target.value)}
+                              placeholder={t("e.g. RS-2024-001")}
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 transition-all hover:border-gray-300"
+                            />
+                          </div>
+
+                          {(brandName || designNumber) && (
+                            <div className="space-y-4 pt-2 border-t border-gray-50">
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
+                                <div className="flex items-center gap-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">{t("Size:")}</span>
+                                    <div className="flex items-center border border-gray-200 rounded bg-white overflow-hidden h-7">
+                                      <input 
+                                        type="text" 
+                                        value={fontSize} 
+                                        readOnly
+                                        className="w-8 text-center text-[11px] font-bold text-gray-700 bg-transparent outline-none"
+                                      />
+                                      <span className="text-[10px] text-gray-400 mr-1">%</span>
+                                      <div className="flex flex-col border-l border-gray-100">
+                                        <button 
+                                          onClick={() => setFontSize(prev => Math.min(15, prev + 0.5))}
+                                          className="p-0.5 hover:bg-gray-50 text-gray-400 border-b border-gray-100 leading-[0]"
+                                        >
+                                          <ChevronUp className="h-2 w-2" />
+                                        </button>
+                                        <button 
+                                          onClick={() => setFontSize(prev => Math.max(0.5, prev - 0.5))}
+                                          className="p-0.5 hover:bg-gray-50 text-gray-400 leading-[0]"
+                                        >
+                                          <ChevronDown className="h-2 w-2" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isBold}
+                                      onChange={(e) => setIsBold(e.target.checked)}
+                                      className="rounded border-gray-300 text-pink-500 focus:ring-pink-500 w-3.5 h-3.5"
+                                    />
+                                    <span className="text-xs font-medium text-gray-700">{t("Bold")}</span>
+                                  </label>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs text-gray-500">{t("Color:")}</span>
+                                    <div className="flex gap-1.5 items-center">
+                                      <button 
+                                        onClick={() => setFontColor("dark")}
+                                        className={`w-[18px] h-[18px] rounded-full bg-black border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
+                                      />
+                                      <button 
+                                        onClick={() => setFontColor("white")}
+                                        className={`w-[18px] h-[18px] rounded-full bg-white border-2 ${fontColor === "white" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-gray-200"}`}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Text Position")}</span>
+                                <div className="grid grid-cols-2 gap-2 max-w-[240px]">
+                                  {["top_left", "top_right", "bottom_left", "bottom_right"].map((pos) => (
+                                    <button
+                                      key={pos}
+                                      onClick={() => setTextPosition(pos)}
+                                      className={`py-1.5 rounded text-[13px] font-medium border transition-colors ${
+                                        textPosition === pos 
+                                          ? "bg-pink-50 border-pink-300 text-pink-600" 
+                                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                                      }`}
+                                    >
+                                      {t(pos.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+
+                {/* Step 4: AI Instructions */}
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                  <Accordion>
+                    <AccordionItem value="step-4" className="border-0">
+                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                            4
+                          </span>
+                          <h2 className="text-base font-bold text-gray-900">{t("AI Instructions")}</h2>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-4 px-4 pl-12">
+                        <div className="space-y-6 mt-2">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={optimiseEcommerce}
+                              onChange={(e) => handleOptimiseEcommerceChange(e.target.checked)}
+                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-700 leading-tight">
+                                {t("Optimise for Ecommerce Upload")}
+                              </span>
+                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                                {t("Automatically sets 1K resolution, Portrait (3:4) aspect ratio, and JPEG format.")}
+                              </span>
+                            </div>
+                          </label>
+                          <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
+                            <span className="text-sm font-semibold text-gray-700">{t("Output Format")}</span>
+                            <div className="flex gap-2">
+                              <button
+                                disabled={optimiseEcommerce}
+                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                                  !optimiseEcommerce && outputFormat === "png" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600"
+                                } ${optimiseEcommerce ? "cursor-not-allowed grayscale" : "hover:bg-gray-50"}`}
+                              >
+                                {t("PNG")}
+                              </button>
+                              <button
+                                disabled={optimiseEcommerce}
+                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                                  optimiseEcommerce || outputFormat === "jpeg" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600"
+                                } ${optimiseEcommerce ? "cursor-not-allowed" : "hover:bg-gray-50"}`}
+                              >
+                                {t("JPEG")}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Edit / Style Prompt")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <textarea 
+                              rows={3}
+                              placeholder={t("e.g. Add 4 color transitions: mehendi (starting color), pista, firozi, and rani. Include...")}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 resize-y"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Aspect Ratio")}</span>
+                            <div className={`relative ${optimiseEcommerce ? "ring-2 ring-pink-500/20 rounded-lg" : ""}`}>
+                              <select 
+                                value={aspectRatio}
+                                onChange={(e) => setAspectRatio(e.target.value)}
+                                disabled={optimiseEcommerce}
+                                className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${optimiseEcommerce ? "border-pink-500 cursor-not-allowed font-medium" : "border-gray-300"}`}
+                              >
+                                <option value="3:4 - Portrait">{t("3:4 - Portrait")}</option>
+                                <option value="4:3 - Landscape">{t("4:3 - Landscape")}</option>
+                                <option value="1:1 - Square">{t("1:1 - Square")}</option>
+                                <option value="2:3 - Tall Portrait (4:6, 6:9, Default)">{t("2:3 - Tall Portrait (4:6, 6:9, Default)")}</option>
+                                <option value="3:2 - Wide Landscape">{t("3:2 - Wide Landscape")}</option>
+                                <option value="9:16 - Phone/Stories">{t("9:16 - Phone/Stories")}</option>
+                                <option value="16:9 - Widescreen">{t("16:9 - Widescreen")}</option>
+                              </select>
+                              <ChevronDown className={`absolute right-3 top-2.5 h-4 w-4 pointer-events-none ${optimiseEcommerce ? "text-pink-500" : "text-gray-900"}`} strokeWidth={3} />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Resolution")}</span>
+                            <div className="relative">
+                              <select 
+                                value={resolution}
+                                onChange={(e) => setResolution(e.target.value)}
+                                disabled={optimiseEcommerce}
+                                className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${optimiseEcommerce ? "border-gray-300 cursor-not-allowed font-medium bg-gray-50/50" : "border-gray-300"}`}
+                              >
+                                <option value="1K">{t("1K")}</option>
+                                <option value="2K">{t("2K")}</option>
+                                <option value="4K">{t("4K")}</option>
+                              </select>
+                              <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
+                            </div>
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Layers className="h-12 w-12 text-gray-200 mb-4" />
+                <h3 className="text-lg font-bold text-gray-900 mb-1">{t("Combine Feature")}</h3>
+                <p className="text-sm text-gray-500 max-w-xs">{t("Combine multiple designs into a single look. Coming soon!")}</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Sticky Generate Button */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-20">
           <button className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-xl shadow-md text-sm font-bold transition-transform hover:scale-[1.02] flex items-center justify-center gap-2">
-            <Sparkles className="h-4 w-4" /> {t("Generate Images")}
+            {activeTab === "combine" ? (
+              <>
+                <Layers className="h-4 w-4" /> {t("Generate Combined Image (1 credit)")}
+              </>
+            ) : activeTab === "video" ? (
+              <>
+                <Video className="h-4 w-4" /> {t("Generate Video")}
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" /> {t("Generate Images")}
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* ─── RIGHT COLUMN ─── */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-5 md:px-8 py-5 flex flex-col min-h-full">
-          {/* Pricing Box - Always Visible */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-            <h3 className="flex items-center gap-2 text-base font-bold text-gray-900 mb-4">
-              <CreditCard className="h-4 w-4 text-pink-600" /> {t("Pricing")}
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-gray-700">{t("Image Generation")}</span>
-                <span className="text-sm font-bold text-pink-600">
-                  {t("1 credit")}{" "}
-                  <span className="text-gray-400 font-normal">{t("/ image")}</span>
-                </span>
-              </div>
-              <div className="border-t border-gray-100" />
-              <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-gray-700">
-                  {t("Video Generation (up to 45s)")}
-                </span>
-                <span className="text-sm font-bold text-purple-600">
-                  {t("1 credit")}{" "}
-                  <span className="text-gray-400 font-normal">{t("/ second")}</span>
-                </span>
-              </div>
-            </div>
+  {/* ─── RIGHT COLUMN ─── */}
+  <div className="flex-1 overflow-y-auto">
+    <div className="max-w-4xl mx-auto px-5 md:px-8 py-5 flex flex-col min-h-full">
+      {/* Pricing Box - Always Visible */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h3 className="flex items-center gap-2 text-base font-bold text-gray-900 mb-4">
+          <CreditCard className="h-4 w-4 text-pink-600" /> {t("Pricing")}
+        </h3>
+        <div className="space-y-3">
+          <div className="flex justify-between items-center py-2">
+            <span className="text-sm text-gray-700">{t("Image Generation")}</span>
+            <span className="text-sm font-bold text-pink-600">
+              {t("1 credit")}{" "}
+              <span className="text-gray-400 font-normal">{t("/ image")}</span>
+            </span>
+          </div>
+          <div className="border-t border-gray-100" />
+          <div className="flex justify-between items-center py-2">
+            <span className="text-sm text-gray-700">
+              {t("Video Generation (up to 45s)")}
+            </span>
+            <span className="text-sm font-bold text-purple-600">
+              {t("1 credit")}{" "}
+              <span className="text-gray-400 font-normal">{t("/ second")}</span>
+            </span>
+          </div>
+        </div>
             <div className="mt-4 flex gap-2 text-xs text-gray-500">
               <Info className="h-3.5 w-3.5 shrink-0 text-gray-400 mt-0.5" />
               <p className="leading-relaxed">
