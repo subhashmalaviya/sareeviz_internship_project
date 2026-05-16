@@ -208,7 +208,163 @@ export default function StudioPage() {
               </div>
 
               {/* Upload Box */}
-              {!["saree", "lehenga", "kurti", "salwar suit"].includes(generateFor.toLowerCase()) ? (
+              {generateFor === "kurti" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Kurti Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
+                    </p>
+                  </div>
+                </div>
+              ) : generateFor.toLowerCase() === "salwar suit" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Top / Kameez Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Bottom / Salwar Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Jewelry" ? (
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-gray-700">
+                    {t("Jewelry Design")}
+                  </span>
+                  <div className="border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50 overflow-hidden relative group cursor-pointer hover:border-pink-300 transition-colors">
+                    <div className="h-72 flex flex-col items-center justify-center relative">
+                      {/* Jewelry placeholder visual */}
+                      <img 
+                        src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&q=80" 
+                        alt="Jewelry Design"
+                        className="absolute inset-0 w-full h-full object-cover opacity-60"
+                      />
+                      <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="bg-white rounded-full p-2.5 shadow-sm border border-gray-100 mb-2">
+                          <Upload className="h-5 w-5 text-pink-500" />
+                        </div>
+                        <span className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium text-gray-600 shadow-sm border border-gray-100">
+                          {t("Upload an image like this")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Women's Innerwear" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Women's Innerwear Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Men's Innerwear" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Men's Innerwear Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Stole" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Stole Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Women's Dress" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Dress (Top) Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : generateFor === "Man's Kurta" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Man's Kurta Design")}</span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                        <Upload className="h-6 w-6 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-pink-50 rounded-full p-2 mb-2">
+                        <Upload className="h-5 w-5 text-pink-500" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
+                    </p>
+                  </div>
+                </div>
+              ) : !["saree", "lehenga"].includes(generateFor.toLowerCase()) ? (
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <span className="text-sm font-semibold text-gray-700">{t("Top Design")}</span>
@@ -228,6 +384,22 @@ export default function StudioPage() {
                       </div>
                       <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                     </div>
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
+                    </p>
+                  </div>
+                </div>
+              ) : generateFor === "lehenga" ? (
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-gray-700">
+                    {t("Lehenga Design")}
+                  </span>
+                  <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
+                    <div className="bg-pink-50 rounded-full p-2.5 mb-2">
+                      <Upload className="h-6 w-6 text-pink-500" />
+                    </div>
+                    <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
+                    <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
                   </div>
                 </div>
               ) : (
@@ -254,86 +426,186 @@ export default function StudioPage() {
 
               {/* Sub-accordions under Step 1 */}
               <Accordion multiple className="space-y-2">
-                <AccordionItem value="item-1" className="bg-white rounded-xl border border-gray-200 px-4">
-                  <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
-                    {t("Add Blouse / Dupatta / Pallu Design")}
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-4 space-y-5">
-                    {generateFor === "saree" ? (
-                      <>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Blouse Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
+                {!["kurti", "Man's Kurta", "Men's Dress", "Stole", "Jewelry"].includes(generateFor) && (
+                  <AccordionItem value="item-1" className="bg-white rounded-xl border border-gray-200 px-4">
+                    <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
+                      {generateFor === "lehenga" ? t("Add Choli / Dupatta Design") : 
+                       ["salwar suit", "Women's Dress"].includes(generateFor.toLowerCase()) ? t("Additional Design References") :
+                       ["Men's Innerwear", "Women's Innerwear"].includes(generateFor) ? t("Back Design Reference") :
+                       t("Add Blouse / Dupatta / Pallu Design")}
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-4 space-y-5">
+                      {generateFor === "saree" ? (
+                        <>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Blouse Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                             </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a blouse reference to match its design, color, and pattern in the generated image.")}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                            {t("Upload a blouse reference to match its design, color, and pattern in the generated image.")}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                             </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a dupatta reference to match its design, color, and pattern in the generated image.")}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                            {t("Upload a dupatta reference to match its design, color, and pattern in the generated image.")}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Pallu/Drape Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Pallu/Drape Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                             </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a pallu reference to match its design, color, and pattern in the generated image.")}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                            {t("Upload a pallu reference to match its design, color, and pattern in the generated image.")}
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Upload supplementary images for detailed generation.")}</p>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
+                        </>
+                      ) : generateFor === "lehenga" ? (
+                        <>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Choli Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a choli reference to match its design, color, and pattern in the generated image.")}
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a dupatta reference to match its design, color, and pattern in the generated image.")}
+                            </p>
+                          </div>
+                        </>
+                      ) : generateFor.toLowerCase() === "salwar suit" ? (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">{t("Back Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                              <span className="text-[11px] text-gray-400">{t("Reference for back of kameez/top")}</span>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">{t("Sleeve Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                              <span className="text-[11px] text-gray-400">{t("Reference for sleeve pattern/design")}</span>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : generateFor === "Women's Dress" ? (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">{t("Back Dress Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                              <span className="text-[11px] text-gray-400">{t("Reference for back of dress")}</span>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                              <span className="text-[11px] text-gray-400">{t("Reference for bottom wear (pants, skirt, etc.)")}</span>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : ["Men's Innerwear", "Women's Innerwear"].includes(generateFor) ? (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-semibold text-gray-700">{t("Back Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                              <span className="text-[11px] text-gray-400">{t("Reference for back view of innerwear")}</span>
+                            </div>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {t("Upload a back design reference to ensure the back of the innerwear matches the design.")}
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-500">{t("Upload supplementary images for detailed generation.")}</p>
+                      )}
+                    </AccordionContent>
+                  </AccordionItem>
+                )}
 
                 <AccordionItem value="item-2" className="bg-white rounded-xl border border-gray-200 px-4">
                   <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
                     {t("Close-Up Design Reference")}
                   </AccordionTrigger>
                   <AccordionContent className="pb-4">
-                    {generateFor === "saree" ? (
-                      <div className="space-y-2">
-                        <span className="text-sm font-semibold text-gray-700">{t("Close-Up Design Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                        <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                          <div className="bg-pink-50 rounded-full p-2 mb-2">
-                            <Upload className="h-5 w-5 text-pink-500" />
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    <div className="space-y-2">
+                      <span className="text-sm font-semibold text-gray-700">{t("Close-Up Design Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                      <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                        <div className="bg-pink-50 rounded-full p-2 mb-2">
+                          <Upload className="h-5 w-5 text-pink-500" />
                         </div>
-                        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                          {t("Upload a close-up shot of the design to accurately generate the relevant details and texture on the apparel.")}
-                        </p>
+                        <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Upload fabric close-ups to preserve pattern details.")}</p>
-                    )}
+                      <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                        {t("Upload a close-up shot of the design to accurately generate the relevant details and texture on the apparel.")}
+                      </p>
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                <AccordionItem value="item-3" className="bg-white rounded-xl border border-gray-200 px-4">
-                  <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
-                    {t("Catalogue Options")}
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-4">
-                    {generateFor === "saree" ? (
+                {generateFor !== "Jewelry" && (
+                  <AccordionItem value="item-3" className="bg-white rounded-xl border border-gray-200 px-4">
+                    <AccordionTrigger className="hover:no-underline py-4 text-sm font-semibold text-gray-900">
+                      {t("Catalogue Options")}
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-4">
                       <div className="space-y-4">
                         <div className="space-y-2">
                           <span className="text-sm font-semibold text-gray-700">{t("Colour Matching")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
@@ -376,11 +648,9 @@ export default function StudioPage() {
                           </label>
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Select how many variations you need.")}</p>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
+                    </AccordionContent>
+                  </AccordionItem>
+                )}
               </Accordion>
             </div>
 
@@ -399,229 +669,40 @@ export default function StudioPage() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4 px-4 pl-12">
-                    {generateFor === "saree" ? (
-                      <div className="space-y-6">
-                        <div className="flex gap-6 mt-2">
-                          <label className="flex items-center gap-2 cursor-pointer group">
-                            <input
-                              type="radio"
-                              name="photography_style"
-                              value="model"
-                              checked={photographyStyle === "model"}
-                              onChange={() => setPhotographyStyle("model")}
-                              className="w-4 h-4 accent-pink-500 cursor-pointer"
-                            />
-                            <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900">
-                              {t("Model Photography")}
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer group">
-                            <input
-                              type="radio"
-                              name="photography_style"
-                              value="flat_lay"
-                              checked={photographyStyle === "flat_lay"}
-                              onChange={() => setPhotographyStyle("flat_lay")}
-                              className="w-4 h-4 accent-pink-500 cursor-pointer"
-                            />
-                            <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900">
-                              {t("Flat Lay Photography")}
-                            </span>
-                          </label>
-                        </div>
+                    <div className="space-y-6">
+                      <div className="flex gap-6 mt-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="photography_style"
+                            value="model"
+                            checked={photographyStyle === "model"}
+                            onChange={() => setPhotographyStyle("model")}
+                            className="w-4 h-4 accent-pink-500 cursor-pointer"
+                          />
+                          <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900">
+                            {t("Model Photography")}
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="photography_style"
+                            value="flat_lay"
+                            checked={photographyStyle === "flat_lay"}
+                            onChange={() => setPhotographyStyle("flat_lay")}
+                            className="w-4 h-4 accent-pink-500 cursor-pointer"
+                          />
+                          <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900">
+                            {t("Flat Lay Photography")}
+                          </span>
+                        </label>
+                      </div>
 
-                        {photographyStyle === "model" ? (
-                          <>
-                            <div className="space-y-2">
-                              <span className="text-sm font-semibold text-gray-700">{t("Model and Background")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                                <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                  <Upload className="h-5 w-5 text-pink-500" />
-                                </div>
-                                <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                              </div>
-                              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                                {t("Upload a photo of a specific model or background to copy their look, lighting, and face.")}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <span className="text-sm font-semibold text-gray-700">{t("Pose(s)")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                                <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                  <Upload className="h-5 w-5 text-pink-500" />
-                                </div>
-                                <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                                <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                              </div>
-                            </div>
-                            <div className="mt-6 pt-4 border-t border-gray-100">
-                              <label className="flex items-start gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={usePoseLibrary}
-                                  onChange={(e) => setUsePoseLibrary(e.target.checked)}
-                                  className="mt-1.5 rounded border-gray-300 text-pink-500 focus:ring-pink-500 cursor-pointer"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <div className="bg-pink-600 rounded p-1 shrink-0">
-                                    <Sparkles className="h-3.5 w-3.5 text-white" />
-                                  </div>
-                                  <span className="text-[15px] font-medium text-gray-900 leading-tight group-hover:text-pink-600 transition-colors">
-                                    {t("Select poses from prompt / image library")}
-                                  </span>
-                                </div>
-                              </label>
-                              
-                              {usePoseLibrary && (
-                                <div className="flex flex-col w-full pl-8">
-                                  <div className="mt-5 space-y-5 w-full">
-                                    <div className="space-y-3">
-                                      <label className="flex items-center gap-2.5 cursor-pointer group">
-                                        <input
-                                          type="radio"
-                                          name="pose_lib_type"
-                                          checked={poseLibraryType === "prompt"}
-                                          onChange={() => setPoseLibraryType("prompt")}
-                                          className="w-4 h-4 accent-pink-600 cursor-pointer"
-                                        />
-                                        <span className="text-sm text-gray-700 group-hover:text-gray-900">
-                                          {t("Pose Prompt Library")}
-                                        </span>
-                                      </label>
-                                      <label className="flex items-center gap-2.5 cursor-pointer group">
-                                        <input
-                                          type="radio"
-                                          name="pose_lib_type"
-                                          checked={poseLibraryType === "image"}
-                                          onChange={() => setPoseLibraryType("image")}
-                                          className="w-4 h-4 accent-pink-600 cursor-pointer"
-                                        />
-                                        <span className="text-sm text-gray-700 group-hover:text-gray-900">
-                                          {t("Pose Image Library")}
-                                        </span>
-                                      </label>
-                                    </div>
-                                    
-                                    {poseLibraryType === "prompt" ? (
-                                      <>
-                                        <div className="space-y-2">
-                                          <span className="text-sm font-semibold text-gray-700 block">{t("Number of Poses")}</span>
-                                          <div className="relative w-24">
-                                            <select 
-                                              value={numPoses} 
-                                              onChange={(e) => setNumPoses(Number(e.target.value))}
-                                              className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
-                                            >
-                                              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-gray-900 pointer-events-none" />
-                                          </div>
-                                        </div>
-                                        
-                                        <div className="border border-gray-200 rounded-xl overflow-hidden mt-2">
-                                          <div className="flex items-center justify-between p-3.5 bg-gray-50 border-b border-gray-200">
-                                            <span className="text-sm font-semibold text-gray-700">{t("Edit Pose Prompts")}</span>
-                                            <ChevronUp className="h-4 w-4 text-gray-400" />
-                                          </div>
-                                          <div className="p-4 bg-white space-y-4">
-                                            <div className="flex justify-between items-start gap-4">
-                                              <p className="text-[13px] text-gray-500 leading-relaxed pr-4">
-                                                {t("Customise the text description for each pose. Click a pose to expand and edit.")}
-                                              </p>
-                                              <button 
-                                                onClick={() => setPosePrompts(DEFAULT_POSES.map(p => p.desc))}
-                                                className="shrink-0 flex items-center gap-1.5 text-[13px] text-pink-600 font-medium hover:text-pink-700"
-                                              >
-                                                <RefreshCcw className="h-3.5 w-3.5" /> {t("Reset to Default")}
-                                              </button>
-                                            </div>
-                                            
-                                            <div className="space-y-2.5 h-[320px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
-                                              {DEFAULT_POSES.slice(0, numPoses).map((pose, index) => (
-                                                <div key={pose.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                                                  <button 
-                                                    onClick={() => setExpandedPose(expandedPose === pose.id ? null : pose.id)}
-                                                    className="w-full flex items-center justify-between p-3.5 bg-[#F9FAFB] hover:bg-gray-100 transition-colors text-left"
-                                                  >
-                                                    <span className="text-sm font-semibold text-gray-700">
-                                                      {t(`Pose ${pose.id}: ${pose.label}`)}
-                                                    </span>
-                                                    {expandedPose === pose.id ? (
-                                                      <ChevronUp className="h-4 w-4 text-gray-500" />
-                                                    ) : (
-                                                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                                                    )}
-                                                  </button>
-                                                  {expandedPose === pose.id && (
-                                                    <div className="p-3 bg-white border-t border-gray-200 relative group">
-                                                      <textarea
-                                                        value={posePrompts[index]}
-                                                        onChange={(e) => {
-                                                          const newPrompts = [...posePrompts];
-                                                          newPrompts[index] = e.target.value;
-                                                          setPosePrompts(newPrompts);
-                                                        }}
-                                                        className="w-full h-24 text-[13px] text-gray-700 bg-white border border-transparent hover:border-gray-200 focus:border-pink-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-pink-100 resize-none transition-colors"
-                                                      />
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <div className="space-y-3">
-                                        <span className="text-sm font-medium text-gray-800 block">
-                                          {t("Select Poses")} ({selectedImagePoses.length} {t("Selected")})
-                                        </span>
-                                        <div className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
-                                          <div className="grid grid-cols-4 gap-2.5">
-                                            {[1,2,3,4,5,6,7,8].map(poseNum => {
-                                              const isSelected = selectedImagePoses.includes(poseNum);
-                                              return (
-                                                <div 
-                                                  key={poseNum}
-                                                  onClick={() => {
-                                                    if (isSelected) {
-                                                      setSelectedImagePoses(prev => prev.filter(p => p !== poseNum));
-                                                    } else {
-                                                      setSelectedImagePoses(prev => [...prev, poseNum]);
-                                                    }
-                                                  }}
-                                                  className={`relative aspect-[3/4] rounded-lg overflow-hidden cursor-pointer transition-all ${
-                                                    isSelected ? "ring-2 ring-pink-500 ring-offset-1" : "border border-gray-200 hover:border-gray-300"
-                                                  }`}
-                                                >
-                                                  <img 
-                                                    src={`/poses/pose${poseNum}.webp`} 
-                                                    alt={`Pose ${poseNum}`} 
-                                                    className="absolute inset-0 w-full h-full object-cover"
-                                                  />
-                                                  <div className="absolute inset-x-0 bottom-0 pt-8 pb-1.5 px-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex justify-center z-10">
-                                                    <span className="text-white text-xs font-medium tracking-wide">
-                                                      Pose {poseNum}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              )
-                                            })}
-                                          </div>
-                                        </div>
-                                        {selectedImagePoses.length === 0 && (
-                                          <p className="text-red-600 text-sm mt-1">{t("Please select at least one pose")}</p>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="space-y-2 mt-4">
-                            <span className="text-sm font-semibold text-gray-700">{t("Flat Lay Style Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                      {photographyStyle === "model" ? (
+                        <>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Model and Background")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
                             <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
                               <div className="bg-pink-50 rounded-full p-2 mb-2">
                                 <Upload className="h-5 w-5 text-pink-500" />
@@ -629,14 +710,199 @@ export default function StudioPage() {
                               <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                             </div>
                             <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a photo showing the surface, lighting, and styling you want for your flat lay (e.g. marble table, wooden surface). Optional.")}
+                              {t("Upload a photo of a specific model or background to copy their look, lighting, and face.")}
                             </p>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Configuration options will appear here.")}</p>
-                    )}
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Pose(s)")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                              <div className="bg-pink-50 rounded-full p-2 mb-2">
+                                <Upload className="h-5 w-5 text-pink-500" />
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                              <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                            </div>
+                          </div>
+                          <div className="mt-6 pt-4 border-t border-gray-100">
+                            <label className="flex items-start gap-3 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={usePoseLibrary}
+                                onChange={(e) => setUsePoseLibrary(e.target.checked)}
+                                className="mt-1.5 rounded border-gray-300 text-pink-500 focus:ring-pink-500 cursor-pointer"
+                              />
+                              <div className="flex items-center gap-2">
+                                <div className="bg-pink-600 rounded p-1 shrink-0">
+                                  <Sparkles className="h-3.5 w-3.5 text-white" />
+                                </div>
+                                <span className="text-[15px] font-medium text-gray-900 leading-tight group-hover:text-pink-600 transition-colors">
+                                  {t("Select poses from prompt / image library")}
+                                </span>
+                              </div>
+                            </label>
+                            
+                            {usePoseLibrary && (
+                              <div className="flex flex-col w-full pl-8">
+                                <div className="mt-5 space-y-5 w-full">
+                                  <div className="space-y-3">
+                                    <label className="flex items-center gap-2.5 cursor-pointer group">
+                                      <input
+                                        type="radio"
+                                        name="pose_lib_type"
+                                        checked={poseLibraryType === "prompt"}
+                                        onChange={() => setPoseLibraryType("prompt")}
+                                        className="w-4 h-4 accent-pink-600 cursor-pointer"
+                                      />
+                                      <span className="text-sm text-gray-700 group-hover:text-gray-900">
+                                        {t("Pose Prompt Library")}
+                                      </span>
+                                    </label>
+                                    <label className="flex items-center gap-2.5 cursor-pointer group">
+                                      <input
+                                        type="radio"
+                                        name="pose_lib_type"
+                                        checked={poseLibraryType === "image"}
+                                        onChange={() => setPoseLibraryType("image")}
+                                        className="w-4 h-4 accent-pink-600 cursor-pointer"
+                                      />
+                                      <span className="text-sm text-gray-700 group-hover:text-gray-900">
+                                        {t("Pose Image Library")}
+                                      </span>
+                                    </label>
+                                  </div>
+                                  
+                                  {poseLibraryType === "prompt" ? (
+                                    <>
+                                      <div className="space-y-2">
+                                        <span className="text-sm font-semibold text-gray-700 block">{t("Number of Poses")}</span>
+                                        <div className="relative w-24">
+                                          <select 
+                                            value={numPoses} 
+                                            onChange={(e) => setNumPoses(Number(e.target.value))}
+                                            className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
+                                          >
+                                            {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                                          </select>
+                                          <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-gray-900 pointer-events-none" />
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="border border-gray-200 rounded-xl overflow-hidden mt-2">
+                                        <div className="flex items-center justify-between p-3.5 bg-gray-50 border-b border-gray-200">
+                                          <span className="text-sm font-semibold text-gray-700">{t("Edit Pose Prompts")}</span>
+                                          <ChevronUp className="h-4 w-4 text-gray-400" />
+                                        </div>
+                                        <div className="p-4 bg-white space-y-4">
+                                          <div className="flex justify-between items-start gap-4">
+                                            <p className="text-[13px] text-gray-500 leading-relaxed pr-4">
+                                              {t("Customise the text description for each pose. Click a pose to expand and edit.")}
+                                            </p>
+                                            <button 
+                                              onClick={() => setPosePrompts(DEFAULT_POSES.map(p => p.desc))}
+                                              className="shrink-0 flex items-center gap-1.5 text-[13px] text-pink-600 font-medium hover:text-pink-700"
+                                            >
+                                              <RefreshCcw className="h-3.5 w-3.5" /> {t("Reset to Default")}
+                                            </button>
+                                          </div>
+                                          
+                                          <div className="space-y-2.5 h-[320px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
+                                            {DEFAULT_POSES.slice(0, numPoses).map((pose, index) => (
+                                              <div key={pose.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                                                <button 
+                                                  onClick={() => setExpandedPose(expandedPose === pose.id ? null : pose.id)}
+                                                  className="w-full flex items-center justify-between p-3.5 bg-[#F9FAFB] hover:bg-gray-100 transition-colors text-left"
+                                                >
+                                                  <span className="text-sm font-semibold text-gray-700">
+                                                    {t(`Pose ${pose.id}: ${pose.label}`)}
+                                                  </span>
+                                                  {expandedPose === pose.id ? (
+                                                    <ChevronUp className="h-4 w-4 text-gray-500" />
+                                                  ) : (
+                                                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                                                  )}
+                                                </button>
+                                                {expandedPose === pose.id && (
+                                                  <div className="p-3 bg-white border-t border-gray-200 relative group">
+                                                    <textarea
+                                                      value={posePrompts[index]}
+                                                      onChange={(e) => {
+                                                        const newPrompts = [...posePrompts];
+                                                        newPrompts[index] = e.target.value;
+                                                        setPosePrompts(newPrompts);
+                                                      }}
+                                                      className="w-full h-24 text-[13px] text-gray-700 bg-white border border-transparent hover:border-gray-200 focus:border-pink-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-pink-100 resize-none transition-colors"
+                                                    />
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <span className="text-sm font-medium text-gray-800 block">
+                                        {t("Select Poses")} ({selectedImagePoses.length} {t("Selected")})
+                                      </span>
+                                      <div className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
+                                        <div className="grid grid-cols-4 gap-2.5">
+                                          {[1,2,3,4,5,6,7,8].map(poseNum => {
+                                            const isSelected = selectedImagePoses.includes(poseNum);
+                                            return (
+                                              <div 
+                                                key={poseNum}
+                                                onClick={() => {
+                                                  if (isSelected) {
+                                                    setSelectedImagePoses(prev => prev.filter(p => p !== poseNum));
+                                                  } else {
+                                                    setSelectedImagePoses(prev => [...prev, poseNum]);
+                                                  }
+                                                }}
+                                                className={`relative aspect-[3/4] rounded-lg overflow-hidden cursor-pointer transition-all ${
+                                                  isSelected ? "ring-2 ring-pink-500 ring-offset-1" : "border border-gray-200 hover:border-gray-300"
+                                                }`}
+                                              >
+                                                <img 
+                                                  src={`/poses/pose${poseNum}.webp`} 
+                                                  alt={`Pose ${poseNum}`} 
+                                                  className="absolute inset-0 w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-x-0 bottom-0 pt-8 pb-1.5 px-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex justify-center z-10">
+                                                  <span className="text-white text-xs font-medium tracking-wide">
+                                                    Pose {poseNum}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                      {selectedImagePoses.length === 0 && (
+                                        <p className="text-red-600 text-sm mt-1">{t("Please select at least one pose")}</p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2 mt-4">
+                          <span className="text-sm font-semibold text-gray-700">{t("Flat Lay Style Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                            <div className="bg-pink-50 rounded-full p-2 mb-2">
+                              <Upload className="h-5 w-5 text-pink-500" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                            {t("Upload a photo showing the surface, lighting, and styling you want for your flat lay (e.g. marble table, wooden surface). Optional.")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
@@ -657,118 +923,114 @@ export default function StudioPage() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4 px-4 pl-12">
-                    {generateFor === "saree" ? (
-                      <div className="space-y-6">
-                        <div className="space-y-2 mt-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Brand Logo")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
+                    <div className="space-y-6">
+                      <div className="space-y-2 mt-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Brand Logo")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                        <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
+                          <div className="bg-pink-50 rounded-full p-2 mb-2">
+                            <Upload className="h-5 w-5 text-pink-500" />
                           </div>
+                          <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
                         </div>
-                        <label className="flex items-start gap-2 cursor-pointer mt-2">
-                          <input type="checkbox" className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-gray-700 leading-tight">
-                              {t("Add brand logo as center watermark")}
-                            </span>
-                            <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
-                              {t("Places a faint brand logo in the center of the image (requires brand logo upload).")}
-                            </span>
-                          </div>
-                        </label>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Brand Name")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <input 
-                            type="text" 
-                            value={brandName}
-                            onChange={(e) => setBrandName(e.target.value)}
-                            placeholder={t("e.g. Royal Silks")}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Design Number")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <input 
-                            type="text" 
-                            value={designNumber}
-                            onChange={(e) => setDesignNumber(e.target.value)}
-                            placeholder={t("e.g. RS-2024-001")}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
-                          />
-                        </div>
-
-                        {(brandName.trim() !== "" || designNumber.trim() !== "") && (
-                          <div className="space-y-4 pt-2">
-                            <div className="space-y-2">
-                              <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
-                              <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-gray-500">{t("Size:")}</span>
-                                  <div className="flex items-center gap-1">
-                                    <input 
-                                      type="number" 
-                                      min="0.5"
-                                      max="15"
-                                      step="0.5"
-                                      value={fontSize}
-                                      onChange={(e) => setFontSize(e.target.value)}
-                                      className="w-14 border border-gray-300 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-pink-500"
-                                    />
-                                    <span className="text-xs text-gray-500">%</span>
-                                  </div>
-                                </div>
-                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isBold}
-                                    onChange={(e) => setIsBold(e.target.checked)}
-                                    className="rounded border-gray-300 text-pink-500 focus:ring-pink-500 w-3.5 h-3.5"
-                                  />
-                                  <span className="text-xs font-medium text-gray-700">{t("Bold")}</span>
-                                </label>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-gray-500">{t("Color:")}</span>
-                                  <div className="flex gap-1.5 items-center">
-                                    <button 
-                                      onClick={() => setFontColor("dark")}
-                                      className={`w-[18px] h-[18px] rounded-full bg-gray-500 border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
-                                    />
-                                    <button 
-                                      onClick={() => setFontColor("white")}
-                                      className={`w-[18px] h-[18px] rounded-full bg-white border-2 ${fontColor === "white" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-gray-200"}`}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <span className="text-sm font-semibold text-gray-700">{t("Text Position")}</span>
-                              <div className="grid grid-cols-2 gap-2 max-w-[240px]">
-                                {["top_left", "top_right", "bottom_left", "bottom_right"].map((pos) => (
-                                  <button
-                                    key={pos}
-                                    onClick={() => setTextPosition(pos)}
-                                    className={`py-1.5 rounded text-[13px] font-medium border transition-colors ${
-                                      textPosition === pos 
-                                        ? "bg-pink-50 border-pink-300 text-pink-600" 
-                                        : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                                    }`}
-                                  >
-                                    {t(pos.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Add your logo or watermark settings.")}</p>
-                    )}
+                      <label className="flex items-start gap-2 cursor-pointer mt-2">
+                        <input type="checkbox" className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-700 leading-tight">
+                            {t("Add brand logo as center watermark")}
+                          </span>
+                          <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                            {t("Places a faint brand logo in the center of the image (requires brand logo upload).")}
+                          </span>
+                        </div>
+                      </label>
+                      <div className="space-y-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Brand Name")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                        <input 
+                          type="text" 
+                          value={brandName}
+                          onChange={(e) => setBrandName(e.target.value)}
+                          placeholder={t("e.g. Royal Silks")}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Design Number")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                        <input 
+                          type="text" 
+                          value={designNumber}
+                          onChange={(e) => setDesignNumber(e.target.value)}
+                          placeholder={t("e.g. RS-2024-001")}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
+                        />
+                      </div>
+
+                      {(brandName.trim() !== "" || designNumber.trim() !== "") && (
+                        <div className="space-y-4 pt-2">
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500">{t("Size:")}</span>
+                                <div className="flex items-center gap-1">
+                                  <input 
+                                    type="number" 
+                                    min="0.5"
+                                    max="15"
+                                    step="0.5"
+                                    value={fontSize}
+                                    onChange={(e) => setFontSize(e.target.value)}
+                                    className="w-14 border border-gray-300 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-pink-500"
+                                  />
+                                  <span className="text-xs text-gray-500">%</span>
+                                </div>
+                              </div>
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={isBold}
+                                  onChange={(e) => setIsBold(e.target.checked)}
+                                  className="rounded border-gray-300 text-pink-500 focus:ring-pink-500 w-3.5 h-3.5"
+                                />
+                                <span className="text-xs font-medium text-gray-700">{t("Bold")}</span>
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-gray-500">{t("Color:")}</span>
+                                <div className="flex gap-1.5 items-center">
+                                  <button 
+                                    onClick={() => setFontColor("dark")}
+                                    className={`w-[18px] h-[18px] rounded-full bg-gray-500 border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
+                                  />
+                                  <button 
+                                    onClick={() => setFontColor("white")}
+                                    className={`w-[18px] h-[18px] rounded-full bg-white border-2 ${fontColor === "white" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-gray-200"}`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Text Position")}</span>
+                            <div className="grid grid-cols-2 gap-2 max-w-[240px]">
+                              {["top_left", "top_right", "bottom_left", "bottom_right"].map((pos) => (
+                                <button
+                                  key={pos}
+                                  onClick={() => setTextPosition(pos)}
+                                  className={`py-1.5 rounded text-[13px] font-medium border transition-colors ${
+                                    textPosition === pos 
+                                      ? "bg-pink-50 border-pink-300 text-pink-600" 
+                                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                                  }`}
+                                >
+                                  {t(pos.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
@@ -789,97 +1051,93 @@ export default function StudioPage() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4 px-4 pl-12">
-                    {generateFor === "saree" ? (
-                      <div className="space-y-6 mt-2">
-                        <label className="flex items-start gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={optimiseEcommerce}
-                            onChange={(e) => handleOptimiseEcommerceChange(e.target.checked)}
-                            className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
-                          />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-gray-700 leading-tight">
-                              {t("Optimise for Ecommerce Upload")}
-                            </span>
-                            <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
-                              {t("Automatically sets 1K resolution, Portrait (3:4) aspect ratio, and JPEG format.")}
-                            </span>
-                          </div>
-                        </label>
-                        <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
-                          <span className="text-sm font-semibold text-gray-700">{t("Output Format")}</span>
-                          <div className="flex gap-2">
-                            <button
-                              disabled={optimiseEcommerce}
-                              onClick={() => setOutputFormat("png")}
-                              className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
-                                outputFormat === "png" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                              } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
-                            >
-                              {t("PNG")}
-                            </button>
-                            <button
-                              disabled={optimiseEcommerce}
-                              onClick={() => setOutputFormat("jpeg")}
-                              className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
-                                outputFormat === "jpeg" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                              } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
-                            >
-                              {t("JPEG")}
-                            </button>
-                          </div>
+                    <div className="space-y-6 mt-2">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={optimiseEcommerce}
+                          onChange={(e) => handleOptimiseEcommerceChange(e.target.checked)}
+                          className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-700 leading-tight">
+                            {t("Optimise for Ecommerce Upload")}
+                          </span>
+                          <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                            {t("Automatically sets 1K resolution, Portrait (3:4) aspect ratio, and JPEG format.")}
+                          </span>
                         </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Edit / Style Prompt")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <textarea 
-                            rows={3}
-                            placeholder={t("e.g. Add 4 color transitions: mehendi (starting color), pista, firozi, and rani. Include...")}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 resize-y"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Aspect Ratio")}</span>
-                          <div className="relative">
-                            <select 
-                              value={aspectRatio}
-                              onChange={(e) => setAspectRatio(e.target.value)}
-                              disabled={optimiseEcommerce}
-                              className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                            >
-                              <option value="3:4 - Portrait">{t("3:4 - Portrait")}</option>
-                              <option value="4:3 - Landscape">{t("4:3 - Landscape")}</option>
-                              <option value="1:1 - Square">{t("1:1 - Square")}</option>
-                              <option value="2:3 - Tall Portrait (4:6, 6:9, Default)">{t("2:3 - Tall Portrait (4:6, 6:9, Default)")}</option>
-                              <option value="3:2 - Wide Landscape">{t("3:2 - Wide Landscape")}</option>
-                              <option value="9:16 - Phone/Stories">{t("9:16 - Phone/Stories")}</option>
-                              <option value="16:9 - Widescreen">{t("16:9 - Widescreen")}</option>
-                              <option value="4:5 - Instagram Portrait">{t("4:5 - Instagram Portrait")}</option>
-                              <option value="5:4 - Instagram Landscape">{t("5:4 - Instagram Landscape")}</option>
-                            </select>
-                            <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Resolution")}</span>
-                          <div className="relative">
-                            <select 
-                              value={resolution}
-                              onChange={(e) => setResolution(e.target.value)}
-                              disabled={optimiseEcommerce}
-                              className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                            >
-                              <option value="1K">{t("1K")}</option>
-                              <option value="2K">{t("2K")}</option>
-                              <option value="4K">{t("4K")}</option>
-                            </select>
-                            <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
-                          </div>
+                      </label>
+                      <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
+                        <span className="text-sm font-semibold text-gray-700">{t("Output Format")}</span>
+                        <div className="flex gap-2">
+                          <button
+                            disabled={optimiseEcommerce}
+                            onClick={() => setOutputFormat("png")}
+                            className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                              outputFormat === "png" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                            } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
+                          >
+                            {t("PNG")}
+                          </button>
+                          <button
+                            disabled={optimiseEcommerce}
+                            onClick={() => setOutputFormat("jpeg")}
+                            className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                              outputFormat === "jpeg" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                            } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
+                          >
+                            {t("JPEG")}
+                          </button>
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">{t("Advanced prompt configuration.")}</p>
-                    )}
+                      <div className="space-y-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Edit / Style Prompt")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                        <textarea 
+                          rows={3}
+                          placeholder={t("e.g. Add 4 color transitions: mehendi (starting color), pista, firozi, and rani. Include...")}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 resize-y"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Aspect Ratio")}</span>
+                        <div className="relative">
+                          <select 
+                            value={aspectRatio}
+                            onChange={(e) => setAspectRatio(e.target.value)}
+                            disabled={optimiseEcommerce}
+                            className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                          >
+                            <option value="3:4 - Portrait">{t("3:4 - Portrait")}</option>
+                            <option value="4:3 - Landscape">{t("4:3 - Landscape")}</option>
+                            <option value="1:1 - Square">{t("1:1 - Square")}</option>
+                            <option value="2:3 - Tall Portrait (4:6, 6:9, Default)">{t("2:3 - Tall Portrait (4:6, 6:9, Default)")}</option>
+                            <option value="3:2 - Wide Landscape">{t("3:2 - Wide Landscape")}</option>
+                            <option value="9:16 - Phone/Stories">{t("9:16 - Phone/Stories")}</option>
+                            <option value="16:9 - Widescreen">{t("16:9 - Widescreen")}</option>
+                            <option value="4:5 - Instagram Portrait">{t("4:5 - Instagram Portrait")}</option>
+                            <option value="5:4 - Instagram Landscape">{t("5:4 - Instagram Landscape")}</option>
+                          </select>
+                          <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-sm font-semibold text-gray-700">{t("Resolution")}</span>
+                        <div className="relative">
+                          <select 
+                            value={resolution}
+                            onChange={(e) => setResolution(e.target.value)}
+                            disabled={optimiseEcommerce}
+                            className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                          >
+                            <option value="1K">{t("1K")}</option>
+                            <option value="2K">{t("2K")}</option>
+                            <option value="4K">{t("4K")}</option>
+                          </select>
+                          <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
+                        </div>
+                      </div>
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
