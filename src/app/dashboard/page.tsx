@@ -38,6 +38,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { UploadDesignBox } from "@/components/dashboard/UploadDesignBox";
+import { createClient } from "@/utils/supabase/client";
+import { useEffect } from "react";
 
 const DEFAULT_POSES = [
   { id: 1, label: "Front Standing", desc: "FULL body head to toe. Strictly Standing naturally with weight casually shifted to one side, looking at camera with a warm, genuine smile. Arms loose or one hand gently on hip. Effortless and authentic." },
@@ -52,6 +55,15 @@ const DEFAULT_POSES = [
 
 export default function StudioPage() {
   const { t } = useLanguage();
+  const supabase = createClient();
+
+  // Dashboard Data State
+  const [uploads, setUploads] = useState<Record<string, string>>({});
+  const [balance, setBalance] = useState<number>(0);
+  const [recentGenerations, setRecentGenerations] = useState<any[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Form State
   const [generateFor, setGenerateFor] = useState("saree");
   const [catalogueOption, setCatalogueOption] = useState("display_rack");
   const [photographyStyle, setPhotographyStyle] = useState("model");
@@ -81,6 +93,103 @@ export default function StudioPage() {
   const [videoDuration, setVideoDuration] = useState("15s");
   const [videoAspectRatio, setVideoAspectRatio] = useState("9:16 (Reels/Shorts)");
 
+  // Dashboard Data Actions
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fetch credits
+      const { data: creditsData } = await supabase
+        .from("credits")
+        .select("balance")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (creditsData) {
+        setBalance(creditsData.balance);
+      }
+
+      // Fetch recent generations
+      const { data: gensData } = await supabase
+        .from("generations")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      
+      if (gensData) {
+        setRecentGenerations(gensData);
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    }
+  };
+
+  const handleGenerate = async () => {
+    const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+    const mainDesignUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+
+    if (!mainDesignUrl) {
+      alert(t("Please upload your main design first!") || "Please upload your main design first!");
+      return;
+    }
+
+    if (balance < 1) {
+      alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Create a generation entry in database
+      const { data: genData, error: genError } = await supabase
+        .from("generations")
+        .insert({
+          user_id: user.id,
+          status: "pending",
+          prompt: `A beautiful professional photoshoot of a model wearing ${generateFor}. Photography style: ${photographyStyle}. Aspect Ratio: ${aspectRatio}. Resolution: ${resolution}.`,
+          original_image_url: mainDesignUrl,
+          model_settings: {
+            generateFor,
+            photographyStyle,
+            outputFormat,
+            aspectRatio,
+            resolution,
+          }
+        })
+        .select()
+        .single();
+
+      if (genError) throw genError;
+
+      // 2. Deduct 1 credit
+      const { error: creditError } = await supabase
+        .from("credits")
+        .update({ balance: Math.max(0, balance - 1) })
+        .eq("user_id", user.id);
+
+      if (creditError) throw creditError;
+
+      setBalance(prev => Math.max(0, prev - 1));
+      await fetchDashboardData();
+
+      alert(t("Generation started successfully! Check history or Projects page.") || "Generation started successfully! Check history or Projects page.");
+    } catch (err: any) {
+      console.error("Generation error:", err);
+      alert(err.message || "Failed to start generation. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleOptimiseEcommerceChange = (checked: boolean) => {
     setOptimiseEcommerce(checked);
     if (checked) {
@@ -91,10 +200,11 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-56px)] overflow-hidden flex flex-col lg:flex-row bg-[#F8F9FB]">
-      {/* ─── LEFT COLUMN ─── */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative">
-        <div className="flex-1 overflow-y-auto pb-20">
+    <div className="h-[calc(100vh-56px)] overflow-hidden flex flex-col lg:flex-row bg-[#F8F9FB] justify-center w-full">
+      <div className="flex w-full max-w-[1400px] mx-auto shadow-sm">
+        {/* ─── LEFT COLUMN ─── */}
+        <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative">
+          <div className="flex-1 overflow-y-auto pb-20 scrollbar-thin">
           {/* Tabs row */}
           <div className="flex items-center gap-0 border-b border-gray-200 px-5 pt-3">
             <button
@@ -216,221 +326,48 @@ export default function StudioPage() {
               </div>
 
               {/* Upload Box */}
-              {generateFor === "kurti" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Kurti Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
-                    </p>
-                  </div>
-                </div>
-              ) : generateFor.toLowerCase() === "salwar suit" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Top / Kameez Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Bottom / Salwar Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Jewelry" ? (
-                <div className="space-y-2">
-                  <span className="text-sm font-semibold text-gray-700">
-                    {t("Jewelry Design")}
-                  </span>
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50 overflow-hidden relative group cursor-pointer hover:border-pink-300 transition-colors">
-                    <div className="h-72 flex flex-col items-center justify-center relative">
-                      {/* Jewelry placeholder visual */}
-                      <img 
-                        src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&q=80" 
-                        alt="Jewelry Design"
-                        className="absolute inset-0 w-full h-full object-cover opacity-60"
-                      />
-                      <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
-                      <div className="relative z-10 flex flex-col items-center">
-                        <div className="bg-white rounded-full p-2.5 shadow-sm border border-gray-100 mb-2">
-                          <Upload className="h-5 w-5 text-pink-500" />
-                        </div>
-                        <span className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium text-gray-600 shadow-sm border border-gray-100">
-                          {t("Upload an image like this")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Women's Innerwear" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Women's Innerwear Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Men's Innerwear" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Men's Innerwear Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Stole" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Stole Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Women's Dress" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Dress (Top) Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : generateFor === "Man's Kurta" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Man's Kurta Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
-                    </p>
-                  </div>
-                </div>
-              ) : !["saree", "lehenga"].includes(generateFor.toLowerCase()) ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Top Design")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-sm font-semibold text-gray-700">{t("Bottom Design (Optional)")}</span>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                      {t("Upload a bottom wear reference to match its design, color, and pattern in the generated image.")}
-                    </p>
-                  </div>
-                </div>
-              ) : generateFor === "lehenga" ? (
-                <div className="space-y-2">
-                  <span className="text-sm font-semibold text-gray-700">
-                    {t("Lehenga Design")}
-                  </span>
-                  <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-48">
-                    <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                      <Upload className="h-6 w-6 text-pink-500" />
-                    </div>
-                    <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                    <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <span className="text-sm font-semibold text-gray-700 capitalize">
-                    {t(generateFor)} {t("Design")}
-                  </span>
-                  <div className="border-2 border-dashed border-pink-200 rounded-xl bg-pink-50/30 overflow-hidden relative group cursor-pointer hover:border-pink-300 transition-colors">
-                    <div className="h-56 flex flex-col items-center justify-center relative">
-                      {/* Saree placeholder visual */}
-                      <div className="absolute inset-4 bg-gradient-to-b from-[#e8d5f0] to-[#d4b8e0] rounded-lg opacity-40" />
-                      <div className="relative z-10 flex flex-col items-center">
-                        <div className="bg-white rounded-full p-2.5 shadow-sm border border-gray-100 mb-2">
-                          <Upload className="h-5 w-5 text-pink-500" />
-                        </div>
-                        <span className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium text-gray-600 shadow-sm border border-gray-100">
-                          {t("Upload an image like this")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-4">
+                {/* Main Design Uploader */}
+                <UploadDesignBox
+                  label={generateFor === "Men's Dress" ? t("Top Design") : 
+                         generateFor === "Women's Dress" ? t("Dress (Top) Design") : 
+                         t(`${generateFor} Design`) || `${generateFor} Design`}
+                  value={uploads[`${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`] || ""}
+                  onChange={(url) => setUploads(prev => ({ 
+                    ...prev, 
+                    [`${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`]: url 
+                  }))}
+                  placeholderText={t("Upload your main design") || "Upload your main design"}
+                  helperText={t("Drag and drop your image, or click to browse. Max size 10 MB.") || "Drag & drop image or click. Max 10 MB."}
+                />
+
+                {/* Secondary Bottom wear uploader for Kurti, Kurta, Salwar Suit, Men's Dress, or general categories */}
+                {["kurti", "salwar suit", "Man's Kurta", "Men's Dress"].includes(generateFor) && (
+                  <UploadDesignBox
+                    label={`${t("Bottom Design")} (${t("Optional")})`}
+                    value={uploads[`${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`] || ""}
+                    onChange={(url) => setUploads(prev => ({ 
+                      ...prev, 
+                      [`${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`]: url 
+                    }))}
+                    placeholderText={t("Upload bottom design reference") || "Upload bottom design reference"}
+                    helperText={t("Optional style reference image under 10 MB.") || "Optional reference under 10 MB."}
+                    heightClass="h-32"
+                  />
+                )}
+
+                {/* Salwar suit Dupatta uploader */}
+                {generateFor.toLowerCase() === "salwar suit" && (
+                  <UploadDesignBox
+                    label={`${t("Dupatta Design")} (${t("Optional")})`}
+                    value={uploads["salwar_dupatta_design"] || ""}
+                    onChange={(url) => setUploads(prev => ({ ...prev, salwar_dupatta_design: url }))}
+                    placeholderText={t("Upload dupatta design reference") || "Upload dupatta design reference"}
+                    helperText={t("Optional style reference image under 10 MB.") || "Optional reference under 10 MB."}
+                    heightClass="h-32"
+                  />
+                )}
+              </div>
 
               {/* Sub-accordions under Step 1 */}
               <Accordion multiple className="space-y-2">
@@ -445,141 +382,98 @@ export default function StudioPage() {
                     <AccordionContent className="pb-4 space-y-5">
                       {generateFor === "saree" ? (
                         <>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Blouse Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a blouse reference to match its design, color, and pattern in the generated image.")}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a dupatta reference to match its design, color, and pattern in the generated image.")}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Pallu/Drape Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a pallu reference to match its design, color, and pattern in the generated image.")}
-                            </p>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Blouse Design") || "Blouse Design"}
+                            value={uploads["saree_blouse_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, saree_blouse_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a blouse reference to match its design, color, and pattern.") || "Upload blouse reference"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Dupatta Design") || "Dupatta Design"}
+                            value={uploads["saree_dupatta_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, saree_dupatta_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a dupatta reference to match its design, color, and pattern.") || "Upload dupatta reference"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Pallu/Drape Design") || "Pallu/Drape Design"}
+                            value={uploads["saree_pallu_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, saree_pallu_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a pallu reference to match its design, color, and pattern.") || "Upload pallu reference"}
+                            heightClass="h-32"
+                          />
                         </>
                       ) : generateFor === "lehenga" ? (
                         <>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Choli Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a choli reference to match its design, color, and pattern in the generated image.")}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Dupatta Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a dupatta reference to match its design, color, and pattern in the generated image.")}
-                            </p>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Choli Design") || "Choli Design"}
+                            value={uploads["lehenga_choli_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, lehenga_choli_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a choli reference to match its design, color, and pattern.") || "Upload choli reference"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Dupatta Design") || "Dupatta Design"}
+                            value={uploads["lehenga_dupatta_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, lehenga_dupatta_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a dupatta reference to match its design, color, and pattern.") || "Upload dupatta reference"}
+                            heightClass="h-32"
+                          />
                         </>
                       ) : generateFor.toLowerCase() === "salwar suit" ? (
                         <>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-semibold text-gray-700">{t("Back Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <span className="text-[11px] text-gray-400">{t("Reference for back of kameez/top")}</span>
-                            </div>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-semibold text-gray-700">{t("Sleeve Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <span className="text-[11px] text-gray-400">{t("Reference for sleeve pattern/design")}</span>
-                            </div>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Back Design") || "Back Design"}
+                            value={uploads["salwar_back_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, salwar_back_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Reference for back of kameez/top") || "Reference for back of kameez/top"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Sleeve Design") || "Sleeve Design"}
+                            value={uploads["salwar_sleeve_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, salwar_sleeve_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Reference for sleeve pattern/design") || "Reference for sleeve pattern/design"}
+                            heightClass="h-32"
+                          />
                         </>
                       ) : generateFor === "Women's Dress" ? (
                         <>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-semibold text-gray-700">{t("Back Dress Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <span className="text-[11px] text-gray-400">{t("Reference for back of dress")}</span>
-                            </div>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-semibold text-gray-700">{t("Bottom Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <span className="text-[11px] text-gray-400">{t("Reference for bottom wear (pants, skirt, etc.)")}</span>
-                            </div>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Back Dress Design") || "Back Dress Design"}
+                            value={uploads["dress_back_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, dress_back_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Reference for back of dress") || "Reference for back of dress"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Bottom Design") || "Bottom Design"}
+                            value={uploads["dress_bottom_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, dress_bottom_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Reference for bottom wear (pants, skirt, etc.)") || "Reference for bottom wear"}
+                            heightClass="h-32"
+                          />
                         </>
                       ) : ["Men's Innerwear", "Women's Innerwear"].includes(generateFor) ? (
                         <>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-semibold text-gray-700">{t("Back Design")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                              <span className="text-[11px] text-gray-400">{t("Reference for back view of innerwear")}</span>
-                            </div>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a back design reference to ensure the back of the innerwear matches the design.")}
-                            </p>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Back Design") || "Back Design"}
+                            value={uploads["innerwear_back_design"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, innerwear_back_design: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a back design reference to match its pattern.") || "Upload back design reference"}
+                            heightClass="h-32"
+                          />
                         </>
                       ) : (
                         <p className="text-sm text-gray-500">{t("Upload supplementary images for detailed generation.")}</p>
@@ -593,18 +487,14 @@ export default function StudioPage() {
                     {t("Close-Up Design Reference")}
                   </AccordionTrigger>
                   <AccordionContent className="pb-4">
-                    <div className="space-y-2">
-                      <span className="text-sm font-semibold text-gray-700">{t("Close-Up Design Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                      <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                        <div className="bg-pink-50 rounded-full p-2 mb-2">
-                          <Upload className="h-5 w-5 text-pink-500" />
-                        </div>
-                        <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                        {t("Upload a close-up shot of the design to accurately generate the relevant details and texture on the apparel.")}
-                      </p>
-                    </div>
+                    <UploadDesignBox
+                      label={t("Close-Up Design Reference") || "Close-Up Design Reference"}
+                      value={uploads["closeup_reference"] || ""}
+                      onChange={(url) => setUploads(prev => ({ ...prev, closeup_reference: url }))}
+                      placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                      helperText={t("Upload a close-up shot of the design to accurately generate details.") || "Upload close-up shot"}
+                      heightClass="h-32"
+                    />
                   </AccordionContent>
                 </AccordionItem>
 
@@ -615,18 +505,14 @@ export default function StudioPage() {
                     </AccordionTrigger>
                     <AccordionContent className="pb-4">
                       <div className="space-y-4">
-                        <div className="space-y-2">
-                          <span className="text-sm font-semibold text-gray-700">{t("Colour Matching")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                          </div>
-                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                            {t("Upload a photo of matching colours options")}
-                          </p>
-                        </div>
+                        <UploadDesignBox
+                          label={t("Colour Matching") || "Colour Matching"}
+                          value={uploads["colour_matching"] || ""}
+                          onChange={(url) => setUploads(prev => ({ ...prev, colour_matching: url }))}
+                          placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                          helperText={t("Upload a photo of matching colours options.") || "Upload matching color options"}
+                          heightClass="h-32"
+                        />
                         <div className="space-y-3 mt-4">
                           <label className="flex items-start gap-3 cursor-pointer group">
                             <input
@@ -709,28 +595,22 @@ export default function StudioPage() {
 
                       {photographyStyle === "model" ? (
                         <>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Model and Background")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                              {t("Upload a photo of a specific model or background to copy their look, lighting, and face.")}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Pose(s)")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                              <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
-                            </div>
-                          </div>
+                          <UploadDesignBox
+                            label={t("Model and Background") || "Model and Background"}
+                            value={uploads["pose_model_bg"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, pose_model_bg: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload a photo of a model or background to copy look.") || "Copy model style reference"}
+                            heightClass="h-32"
+                          />
+                          <UploadDesignBox
+                            label={t("Pose(s)") || "Pose(s)"}
+                            value={uploads["pose_ref"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, pose_ref: url }))}
+                            placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file or drag & drop"}
+                            helperText={t("Upload pose reference to mimic.") || "Mimic specific poses"}
+                            heightClass="h-32"
+                          />
                           <div className="mt-6 pt-4 border-t border-gray-100">
                             <label className="flex items-start gap-3 cursor-pointer group">
                               <input
@@ -898,16 +778,14 @@ export default function StudioPage() {
                         </>
                       ) : (
                         <div className="space-y-2 mt-4">
-                          <span className="text-sm font-semibold text-gray-700">{t("Flat Lay Style Reference")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                          <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                            <div className="bg-pink-50 rounded-full p-2 mb-2">
-                              <Upload className="h-5 w-5 text-pink-500" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                          </div>
-                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                            {t("Upload a photo showing the surface, lighting, and styling you want for your flat lay (e.g. marble table, wooden surface). Optional.")}
-                          </p>
+                          <UploadDesignBox
+                            label={t("Flat Lay Style Reference") || "Flat Lay Style Reference"}
+                            value={uploads["flat_lay_style_ref"] || ""}
+                            onChange={(url) => setUploads(prev => ({ ...prev, flat_lay_style_ref: url }))}
+                            placeholderText={t("Click to upload flat lay reference or drag & drop") || "Click to upload flat lay reference"}
+                            helperText={t("Upload a photo showing the surface, lighting, and styling.") || "Flat lay style reference"}
+                            heightClass="h-32"
+                          />
                         </div>
                       )}
                     </div>
@@ -933,13 +811,14 @@ export default function StudioPage() {
                   <AccordionContent className="pb-4 px-4 pl-12">
                     <div className="space-y-6">
                       <div className="space-y-2 mt-2">
-                        <span className="text-sm font-semibold text-gray-700">{t("Brand Logo")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                        <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                          <div className="bg-pink-50 rounded-full p-2 mb-2">
-                            <Upload className="h-5 w-5 text-pink-500" />
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                        </div>
+                        <UploadDesignBox
+                          label={t("Brand Logo") || "Brand Logo"}
+                          value={uploads["image_brand_logo"] || ""}
+                          onChange={(url) => setUploads(prev => ({ ...prev, image_brand_logo: url }))}
+                          placeholderText={t("Click to upload logo or drag & drop") || "Click to upload logo"}
+                          helperText={t("Upload brand logo watermark image.") || "Brand logo watermark"}
+                          heightClass="h-28"
+                        />
                       </div>
                       <label className="flex items-start gap-2 cursor-pointer mt-2">
                         <input type="checkbox" className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" />
@@ -1211,22 +1090,14 @@ export default function StudioPage() {
               </div>
               <div className="space-y-2">
                 <p className="text-xs text-gray-500">{t("Upload an image to animate into video")}</p>
-                <div className="border-2 border-dashed border-pink-300 rounded-2xl bg-gray-50 overflow-hidden relative group cursor-pointer hover:border-pink-400 transition-colors h-80">
-                  <img 
-                    src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80" 
-                    alt="Reference Video Placeholder"
-                    className="absolute inset-0 w-full h-full object-cover opacity-70"
-                  />
-                  <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
-                  <div className="relative z-10 h-full flex flex-col items-center justify-center">
-                    <div className="bg-white rounded-full p-2.5 shadow-sm border border-gray-100 mb-2">
-                      <Upload className="h-5 w-5 text-pink-500" />
-                    </div>
-                    <span className="bg-white/90 backdrop-blur-sm px-4 py-1.5 rounded-full text-xs font-bold text-gray-900 shadow-sm border border-gray-100">
-                      {t("Upload an image like this")}
-                    </span>
-                  </div>
-                </div>
+                <UploadDesignBox
+                  label={t("Reference Image") || "Reference Image"}
+                  value={uploads["video_reference_image"] || ""}
+                  onChange={(url) => setUploads(prev => ({ ...prev, video_reference_image: url }))}
+                  placeholderText={t("Click to upload reference image or drag & drop") || "Click to upload reference image or drag & drop"}
+                  helperText={t("Upload reference image to animate") || "Upload reference image"}
+                  heightClass="h-80"
+                />
               </div>
             </div>
 
@@ -1337,14 +1208,33 @@ export default function StudioPage() {
                     </span>
                     <h2 className="text-base font-bold text-gray-900">{t("Upload Model Images")}</h2>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500">{t("Upload 2-6 model photos wearing different designs to combine into one image")}</p>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-8 flex flex-col items-center justify-center text-center h-48">
-                      <div className="bg-pink-50 rounded-full p-3 mb-3">
-                        <Upload className="h-6 w-6 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload multiple files or drag & drop")}</span>
-                      <span className="text-xs text-gray-400 mt-1">{t("Batch processing supported")}</span>
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-500">{t("Upload 2-3 model photos wearing different designs to combine into one image")}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <UploadDesignBox
+                        label={t("Model Image 1") || "Model Image 1"}
+                        value={uploads["combine_model_image_1"] || ""}
+                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_1: url }))}
+                        placeholderText={t("Model Image 1") || "Model Image 1"}
+                        helperText={t("First model image") || "First model image"}
+                        heightClass="h-28"
+                      />
+                      <UploadDesignBox
+                        label={t("Model Image 2") || "Model Image 2"}
+                        value={uploads["combine_model_image_2"] || ""}
+                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_2: url }))}
+                        placeholderText={t("Model Image 2") || "Model Image 2"}
+                        helperText={t("Second model image") || "Second model image"}
+                        heightClass="h-28"
+                      />
+                      <UploadDesignBox
+                        label={t("Model Image 3") || "Model Image 3"}
+                        value={uploads["combine_model_image_3"] || ""}
+                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_3: url }))}
+                        placeholderText={t("Model Image 3 (Opt)") || "Model Image 3 (Opt)"}
+                        helperText={t("Third model image") || "Third model image"}
+                        heightClass="h-28"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1358,13 +1248,14 @@ export default function StudioPage() {
                     <h2 className="text-base font-bold text-gray-900">{t("Background Image")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></h2>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-500">{t("Upload a preferred background. If not provided, AI will use a background from one of the model images.")}</p>
-                    <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-8 flex flex-col items-center justify-center text-center h-32">
-                      <div className="bg-pink-50 rounded-full p-2.5 mb-2">
-                        <Upload className="h-5 w-5 text-pink-500" />
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                    </div>
+                    <UploadDesignBox
+                      label={t("Background Image") || "Background Image"}
+                      value={uploads["combine_background_image"] || ""}
+                      onChange={(url) => setUploads(prev => ({ ...prev, combine_background_image: url }))}
+                      placeholderText={t("Click to upload preferred background or drag & drop") || "Click to upload background"}
+                      helperText={t("Upload preferred background image.") || "Preferred background image"}
+                      heightClass="h-32"
+                    />
                   </div>
                 </div>
 
@@ -1383,13 +1274,14 @@ export default function StudioPage() {
                       <AccordionContent className="pb-4 px-4 pl-12">
                         <div className="space-y-4">
                           <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Brand Logo")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <div className="border-2 border-dashed border-gray-200 hover:border-pink-300 rounded-xl bg-white transition-colors cursor-pointer p-6 flex flex-col items-center justify-center text-center h-28">
-                              <div className="bg-pink-50 rounded-full p-2 mb-2">
-                                <Upload className="h-5 w-5 text-pink-500" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900">{t("Click to upload a file or drag & drop")}</span>
-                            </div>
+                            <UploadDesignBox
+                              label={t("Brand Logo") || "Brand Logo"}
+                              value={uploads["combine_brand_logo"] || ""}
+                              onChange={(url) => setUploads(prev => ({ ...prev, combine_brand_logo: url }))}
+                              placeholderText={t("Click to upload logo or drag & drop") || "Click to upload logo"}
+                              helperText={t("Upload brand logo watermark image.") || "Brand logo watermark"}
+                              heightClass="h-28"
+                            />
                           </div>
                           <label className="flex items-start gap-2 cursor-pointer group">
                             <input 
@@ -1620,8 +1512,17 @@ export default function StudioPage() {
 
         {/* Sticky Generate Button */}
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-20">
-          <button className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-xl shadow-md text-sm font-bold transition-transform hover:scale-[1.02] flex items-center justify-center gap-2">
-            {activeTab === "combine" ? (
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-xl shadow-md text-sm font-bold transition-all hover:scale-[1.02] active:scale-95 disabled:scale-100 disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{t("Generating...") || "Generating..."}</span>
+              </>
+            ) : activeTab === "combine" ? (
               <>
                 <Layers className="h-4 w-4" /> {t("Generate Combined Image (1 credit)")}
               </>
@@ -1769,6 +1670,54 @@ export default function StudioPage() {
                 </div>
               </div>
             </>
+          ) : recentGenerations.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {recentGenerations.map((gen) => {
+                const isOutput = gen.status === "done" && gen.generated_image_url;
+                const displayImg = isOutput ? gen.generated_image_url : gen.original_image_url;
+                return (
+                  <div
+                    key={gen.id}
+                    className="relative aspect-[3/4] bg-white rounded-xl border border-gray-200 overflow-hidden group shadow-sm flex flex-col hover:shadow-md transition-shadow"
+                  >
+                    {displayImg ? (
+                      <img
+                        src={displayImg}
+                        alt="Generation item"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
+                        <ImageIcon className="h-6 w-6" />
+                      </div>
+                    )}
+                    
+                    {/* Status indicator pill */}
+                    <div className="absolute top-2 left-2 z-15">
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur-md bg-white/90 ${
+                        gen.status === "done"
+                          ? "text-green-600 border border-green-200/50"
+                          : gen.status === "pending"
+                          ? "text-amber-600 border border-amber-200/50 animate-pulse"
+                          : "text-red-600 border border-red-200/50"
+                      }`}>
+                        {gen.status}
+                      </span>
+                    </div>
+
+                    {/* Quick Lightbox Action on hover */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-10">
+                      <button
+                        onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
+                        className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center py-24 px-8 mb-6 h-[400px]">
               <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center mb-4 border border-gray-100">
@@ -1823,6 +1772,7 @@ export default function StudioPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

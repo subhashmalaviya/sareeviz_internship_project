@@ -84,3 +84,48 @@ create policy "Users can view their own generations"
 create policy "Users can insert their own generations"
   on generations for insert
   with check ( auth.uid() = user_id );
+
+-- 5. Set up Supabase Storage buckets & Row Level Security Policies
+-- Create buckets for designs and avatars
+insert into storage.buckets (id, name, public)
+values ('designs', 'designs', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+-- RLS Policies for "designs" bucket
+create policy "Allow public read access to designs"
+  on storage.objects for select
+  using ( bucket_id = 'designs' );
+
+create policy "Allow authenticated users to upload to designs"
+  on storage.objects for insert
+  with check ( bucket_id = 'designs' and auth.role() = 'authenticated' );
+
+create policy "Allow users to update their own designs"
+  on storage.objects for update
+  using ( bucket_id = 'designs' and auth.uid()::text = (storage.foldername(name))[1] );
+
+create policy "Allow users to delete their own designs"
+  on storage.objects for delete
+  using ( bucket_id = 'designs' and auth.uid()::text = (storage.foldername(name))[1] );
+
+-- RLS Policies for "avatars" bucket
+create policy "Allow public read access to avatars"
+  on storage.objects for select
+  using ( bucket_id = 'avatars' );
+
+create policy "Allow authenticated users to upload to avatars"
+  on storage.objects for insert
+  with check ( bucket_id = 'avatars' and auth.role() = 'authenticated' );
+
+create policy "Allow users to update their own avatars"
+  on storage.objects for update
+  using ( bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1] );
+
+create policy "Allow users to delete their own avatars"
+  on storage.objects for delete
+  using ( bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1] );
+

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Info, Star } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { createClient } from "@/utils/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -21,8 +22,53 @@ const PACKAGES = [
 
 export function CreditsDialog() {
   const { t } = useLanguage();
+  const supabase = createClient();
+
   const [selectedId, setSelectedId] = useState("p3");
+  const [balance, setBalance] = useState<number | null>(null);
+
   const selectedPkg = PACKAGES.find((p) => p.id === selectedId)!;
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data } = await supabase
+          .from("credits")
+          .select("balance")
+          .eq("user_id", user.id)
+          .single();
+
+        if (data) {
+          setBalance(data.balance);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchBalance();
+
+    // Subscribe to Postgres changes on 'credits' table for real-time updates
+    const channel = supabase
+      .channel("header-credits-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "credits" },
+        (payload) => {
+          if (payload.new && typeof payload.new.balance === "number") {
+            setBalance(payload.new.balance);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <Dialog>
@@ -32,7 +78,9 @@ export function CreditsDialog() {
             <div className="w-3.5 h-3.5 rounded-full bg-pink-500/30 flex items-center justify-center">
               <Sparkles className="h-2.5 w-2.5 text-pink-400" />
             </div>
-            <span className="text-sm font-semibold text-pink-400">5 credits</span>
+            <span className="text-sm font-semibold text-pink-400">
+              {balance !== null ? `${balance} ${t("credits") || "credits"}` : "..."}
+            </span>
           </button>
         }
       />
