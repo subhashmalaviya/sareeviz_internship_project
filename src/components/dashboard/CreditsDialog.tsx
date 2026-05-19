@@ -72,18 +72,16 @@ export function CreditsDialog() {
 
   return (
     <Dialog>
-      <DialogTrigger
-        render={
-          <button className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-pink-500/30 bg-pink-500/10 hover:bg-pink-500/20 transition-colors">
-            <div className="w-3.5 h-3.5 rounded-full bg-pink-500/30 flex items-center justify-center">
-              <Sparkles className="h-2.5 w-2.5 text-pink-400" />
-            </div>
-            <span className="text-sm font-semibold text-pink-400">
-              {balance !== null ? `${balance} ${t("credits") || "credits"}` : "..."}
-            </span>
-          </button>
-        }
-      />
+      <DialogTrigger asChild>
+        <button className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-pink-500/30 bg-pink-500/10 hover:bg-pink-500/20 transition-colors">
+          <div className="w-3.5 h-3.5 rounded-full bg-pink-500/30 flex items-center justify-center">
+            <Sparkles className="h-2.5 w-2.5 text-pink-400" />
+          </div>
+          <span className="text-sm font-semibold text-pink-400">
+            {balance !== null ? `${balance} ${t("credits") || "credits"}` : "..."}
+          </span>
+        </button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-[420px] p-0 border-0 bg-white shadow-2xl rounded-2xl [&>button]:right-4 [&>button]:top-4">
         <DialogHeader className="px-6 pt-6 pb-2 text-left">
           <div className="flex items-center gap-3">
