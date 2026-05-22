@@ -15,6 +15,11 @@ import {
   Sparkles,
   RefreshCcw,
   ChevronUp,
+  Eye,
+  Download,
+  Loader2,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import {
   Accordion,
@@ -53,6 +58,20 @@ const DEFAULT_POSES = [
   { id: 8, label: "Right Profile", desc: "FULL body head to toe. Strictly standing comfortably, body, shoulders, hips, and feet facing RIGHT in strict side profile, while head and face turn forward toward the camera with a subtle natural smile." }
 ];
 
+const getPoseNum = (modelPose: string | undefined): number => {
+  const poseMapping: Record<string, number> = {
+    "Front Standing": 1,
+    "Left Profile": 2,
+    "Back View": 3,
+    "Leaning on Wall": 4,
+    "Seated": 5,
+    "Walking": 6,
+    "Close-up Portrait": 7,
+    "Right Profile": 8,
+  };
+  return poseMapping[modelPose || ""] || 1;
+};
+
 export default function StudioPage() {
   const { t } = useLanguage();
   const supabase = createClient();
@@ -65,6 +84,10 @@ export default function StudioPage() {
 
   // Form State
   const [generateFor, setGenerateFor] = useState("saree");
+  const [modelPose, setModelPose] = useState("Front Standing");
+  const [skinTone, setSkinTone] = useState("Wheatish");
+  const [backgroundStyle, setBackgroundStyle] = useState("Luxury Palace / Haveli");
+  const [sareeColourHint, setSareeColourHint] = useState("");
   const [catalogueOption, setCatalogueOption] = useState("display_rack");
   const [photographyStyle, setPhotographyStyle] = useState("model");
   const [outputFormat, setOutputFormat] = useState("png");
@@ -86,6 +109,9 @@ export default function StudioPage() {
   const [activeTab, setActiveTab] = useState<"image" | "video" | "combine">("image");
   const [rightTab, setRightTab] = useState<"generate" | "history">("generate");
   const [selectedVideo, setSelectedVideo] = useState<{title: string, src: string} | null>(null);
+  const [currentGenId, setCurrentGenId] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<{message: string, code?: string} | null>(null);
+  const [useMockMode, setUseMockMode] = useState(true);
 
   // Video specific state
   const [videoCategory, setVideoCategory] = useState("apparel");
@@ -97,6 +123,82 @@ export default function StudioPage() {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  // Client-side polling logic for active jobs
+  useEffect(() => {
+    const activeGens = recentGenerations.filter(
+      (gen) => gen.status === "pending" || gen.status === "processing"
+    );
+
+    if (activeGens.length === 0) return;
+
+    const interval = setInterval(async () => {
+      let updatedAny = false;
+      const newGenerations = [...recentGenerations];
+
+      for (const gen of activeGens) {
+        try {
+          const res = await fetch(`/api/generate/status?id=${gen.id}`);
+          if (!res.ok) continue;
+          
+          const data = await res.json();
+          if (data && data.status !== gen.status) {
+            const index = newGenerations.findIndex((g) => g.id === gen.id);
+            if (index !== -1) {
+              newGenerations[index] = data;
+              updatedAny = true;
+            }
+          }
+        } catch (err) {
+          console.error("Error polling status:", err);
+        }
+      }
+
+      if (updatedAny) {
+        setRecentGenerations(newGenerations);
+        
+        // If any generation completed (done or failed), refresh all dashboard data to sync balance
+        const finishedAny = activeGens.some((g) => {
+          const found = newGenerations.find((ng) => ng.id === g.id);
+          return found && (found.status === "done" || found.status === "failed");
+        });
+        
+        if (finishedAny) {
+          fetchDashboardData();
+        }
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [recentGenerations]);
+
+  useEffect(() => {
+    if (!currentGenId && recentGenerations.length > 0) {
+      const active = recentGenerations.find(
+        (g) => g.status === "pending" || g.status === "processing"
+      );
+      if (active) {
+        setCurrentGenId(active.id);
+      }
+    }
+  }, [recentGenerations, currentGenId]);
+
+  const downloadImage = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      window.open(url, "_blank");
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -146,45 +248,60 @@ export default function StudioPage() {
 
     try {
       setIsGenerating(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
-      // 1. Create a generation entry in database
-      const { data: genData, error: genError } = await supabase
-        .from("generations")
-        .insert({
-          user_id: user.id,
-          status: "pending",
-          prompt: `A beautiful professional photoshoot of a model wearing ${generateFor}. Photography style: ${photographyStyle}. Aspect Ratio: ${aspectRatio}. Resolution: ${resolution}.`,
-          original_image_url: mainDesignUrl,
-          model_settings: {
-            generateFor,
-            photographyStyle,
-            outputFormat,
-            aspectRatio,
-            resolution,
-          }
-        })
-        .select()
-        .single();
+      const payload = {
+        generateFor,
+        photographyStyle,
+        outputFormat,
+        aspectRatio,
+        resolution,
+        modelPose,
+        skinTone,
+        backgroundStyle,
+        sareeColourHint,
+        original_image_url: mainDesignUrl,
+        pose_model_bg: uploads["pose_model_bg"] || null,
+        useMockMode: useMockMode,
+      };
 
-      if (genError) throw genError;
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-      // 2. Deduct 1 credit
-      const { error: creditError } = await supabase
-        .from("credits")
-        .update({ balance: Math.max(0, balance - 1) })
-        .eq("user_id", user.id);
+      if (!res.ok) {
+        const errorData = await res.json();
+        setGenerationError({
+          message: errorData.error || "Failed to start generation.",
+          code: errorData.errorCode || "GEN_FAILED"
+        });
+        return;
+      }
 
-      if (creditError) throw creditError;
+      // Clear any previous error on success
+      setGenerationError(null);
 
+      const newGen = await res.json();
+
+      // Prepend the new generation to history
+      setRecentGenerations(prev => [newGen, ...prev]);
+      setCurrentGenId(newGen.id);
+      setRightTab("generate");
+
+      // Optimistically deduct credit in local state
       setBalance(prev => Math.max(0, prev - 1));
-      await fetchDashboardData();
 
-      alert(t("Generation started successfully! Check history or Projects page.") || "Generation started successfully! Check history or Projects page.");
+      // Quietly refresh data
+      fetchDashboardData();
     } catch (err: any) {
       console.error("Generation error:", err);
-      alert(err.message || "Failed to start generation. Please try again.");
+      setGenerationError({
+        message: err.message || "Failed to start generation. Please try again.",
+        code: "CLIENT_ERROR"
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -595,6 +712,89 @@ export default function StudioPage() {
 
                       {photographyStyle === "model" ? (
                         <>
+                          {/* Basic Model Parameters */}
+                          <div className="space-y-4 pb-4 border-b border-gray-100 mb-4 mt-2">
+                            <div className="grid grid-cols-2 gap-4">
+                              {/* Model Pose Dropdown */}
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Model Pose")}</span>
+                                <div className="relative">
+                                  <select
+                                    value={modelPose}
+                                    onChange={(e) => setModelPose(e.target.value)}
+                                    className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
+                                  >
+                                    {DEFAULT_POSES.map((pose) => (
+                                      <option key={pose.id} value={pose.label}>
+                                        {t(pose.label)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 text-gray-500 pointer-events-none" />
+                                </div>
+                              </div>
+
+                              {/* Skin Tone Dropdown */}
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Skin Tone")}</span>
+                                <div className="relative">
+                                  <select
+                                    value={skinTone}
+                                    onChange={(e) => setSkinTone(e.target.value)}
+                                    className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
+                                  >
+                                    {["Wheatish", "Fair", "Dusky", "Dark"].map((tone) => (
+                                      <option key={tone} value={tone}>
+                                        {t(tone)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 text-gray-500 pointer-events-none" />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              {/* Background Style Dropdown */}
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Background Style")}</span>
+                                <div className="relative">
+                                  <select
+                                    value={backgroundStyle}
+                                    onChange={(e) => setBackgroundStyle(e.target.value)}
+                                    className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
+                                  >
+                                    {[
+                                      "Luxury Palace / Haveli",
+                                      "Modern Minimalist Studio",
+                                      "Indian Traditional Courtyard",
+                                      "Lush Green Garden",
+                                      "Historic Temple Background",
+                                      "Elegant Indoors with Soft Lighting",
+                                      "Rustic Heritage Street"
+                                    ].map((bg) => (
+                                      <option key={bg} value={bg}>
+                                        {t(bg)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 text-gray-500 pointer-events-none" />
+                                </div>
+                              </div>
+
+                              {/* Saree Colour Hint Input */}
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Garment Color Hint")}</span>
+                                <input
+                                  type="text"
+                                  value={sareeColourHint}
+                                  onChange={(e) => setSareeColourHint(e.target.value)}
+                                  placeholder={t("e.g. Royal Blue, Rani Pink") || "e.g. Royal Blue, Rani Pink"}
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 placeholder:text-gray-400"
+                                />
+                              </div>
+                            </div>
+                          </div>
                           <UploadDesignBox
                             label={t("Model and Background") || "Model and Background"}
                             value={uploads["pose_model_bg"] || ""}
@@ -1511,7 +1711,23 @@ export default function StudioPage() {
         </div>
 
         {/* Sticky Generate Button */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-20">
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-20 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 font-medium px-1">
+            <span className="flex items-center gap-1">
+              <Sparkles className="h-3.5 w-3.5 text-pink-500" />
+              {t("AI Mode")}
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useMockMode}
+                onChange={(e) => setUseMockMode(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-pink-600"></div>
+              <span className="ml-2 text-gray-600">{t("Mock (Preview)")}</span>
+            </label>
+          </div>
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
@@ -1604,19 +1820,212 @@ export default function StudioPage() {
 
           {rightTab === "generate" ? (
             <>
-
-              {/* Empty State */}
-              <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center py-16 px-8 mb-6">
-                <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center mb-4 border border-gray-100">
-                  <ImageIcon className="h-7 w-7 text-gray-300" />
+              {/* Billing / API Error Banner */}
+              {generationError && (
+                <div className={`rounded-xl px-4 py-3 text-sm font-medium flex items-start gap-2.5 mb-4 border ${
+                  generationError.code === "BILLING_EXHAUSTED" 
+                    ? "bg-amber-50 text-amber-800 border-amber-200" 
+                    : "bg-red-50 text-red-700 border-red-200"
+                }`}>
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="leading-snug">{generationError.message}</p>
+                    {generationError.code === "BILLING_EXHAUSTED" && (
+                      <a 
+                        href="https://replicate.com/account/billing" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1.5 text-xs font-bold text-amber-700 underline hover:text-amber-900"
+                      >
+                        → Add credit on Replicate
+                      </a>
+                    )}
+                    {generationError.message.includes("Replicate:") && (
+                      <a 
+                        href="https://replicate.com/account/billing" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1 text-xs font-bold text-red-700 underline hover:text-red-950 mr-4"
+                      >
+                        → Check Replicate Billing
+                      </a>
+                    )}
+                    {generationError.message.includes("Gemini:") && (
+                      <div className="mt-1.5 text-xs text-red-600">
+                        <span className="font-semibold">Gemini Tip:</span> Ensure billing is enabled for your Google AI Studio project or create a new key. Go to <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="underline font-bold text-red-700 hover:text-red-950">Google AI Studio</a>.
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => setGenerationError(null)} 
+                    className="text-gray-400 hover:text-gray-600 shrink-0 mt-0.5"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">
-                  {t("No content generated yet")}
-                </h3>
-                <p className="text-sm text-gray-500 text-center max-w-xs">
-                  {t("Upload your design and click Generate Images or Generate Video.")}
-                </p>
-              </div>
+              )}
+
+              {(() => {
+                const currentGen = recentGenerations.find(g => g.id === currentGenId);
+                if (currentGen) {
+                  const isPending = currentGen.status === "pending" || currentGen.status === "processing";
+                  const isDone = currentGen.status === "done";
+                  const isFailed = currentGen.status === "failed";
+                  const displayImg = isDone ? currentGen.generated_image_url : currentGen.original_image_url;
+
+                  return (
+                    <div className="mb-6">
+                      {/* Download ZIP Button */}
+                      <button
+                        disabled={!isDone}
+                        onClick={() => {
+                          if (displayImg) {
+                            downloadImage(displayImg, `sareeviz-gen-${currentGen.id.substring(0, 8)}.png`);
+                          }
+                        }}
+                        className={`w-full h-11 rounded-xl shadow-sm text-sm font-semibold flex items-center justify-center gap-2 mb-4 border transition-all
+                          ${isDone 
+                            ? "bg-slate-900 border-slate-900 text-white hover:bg-slate-800" 
+                            : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                          }
+                        `}
+                      >
+                        <Download className="h-4 w-4" />
+                        {t("Download All (ZIP)") || "Download All (ZIP)"}
+                      </button>
+
+                      {/* Status Banner */}
+                      {isPending && (
+                        <div className="bg-pink-50 text-pink-600 rounded-xl px-4 py-3 text-xs font-semibold flex items-center gap-2 mb-6 border border-pink-100/50 animate-pulse">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>{t("Generating... 1/1 Variations...") || "Generating... 1/1 Variations..."}</span>
+                        </div>
+                      )}
+
+                      {isDone && (
+                        <div className="bg-green-50 text-green-600 rounded-xl px-4 py-3 text-xs font-semibold flex items-center gap-2 mb-6 border border-green-100/50">
+                          <Check className="h-4 w-4 text-green-500" />
+                          <span>{t("Generation completed successfully!") || "Generation completed successfully!"}</span>
+                        </div>
+                      )}
+
+                      {isFailed && (
+                        <div className="bg-red-50 text-red-600 rounded-xl px-4 py-3 text-xs font-semibold flex items-center gap-2 mb-6 border border-red-100/50">
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                          <span>{t("Generation failed. Please try again.") || "Generation failed. Please try again."}</span>
+                        </div>
+                      )}
+
+                      {/* Card Display */}
+                      <div className="flex justify-center mb-6">
+                        <div className="relative aspect-[3/4] w-[260px] bg-white rounded-xl border border-gray-200 overflow-hidden group shadow-sm flex flex-col justify-center items-center">
+                          {isPending && (
+                            <>
+                              {displayImg && (
+                                <img
+                                  src={displayImg}
+                                  alt="Original preview"
+                                  className="absolute inset-0 w-full h-full object-cover opacity-40 blur-xs"
+                                />
+                              )}
+                              <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex flex-col items-center justify-center z-10">
+                                <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-2" />
+                                <span className="text-xs text-gray-500 font-bold capitalize animate-pulse">
+                                  {t("Generating...") || "Generating..."}
+                                </span>
+                              </div>
+                            </>
+                          )}
+
+                          {isDone && displayImg && (
+                            <>
+                              {currentGen.model_settings?.is_mock ? (
+                                <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
+                                  {/* Top: Model Pose */}
+                                  <div className="h-[55%] w-full relative">
+                                    <img
+                                      src={`/poses/pose${getPoseNum(currentGen.model_settings?.modelPose)}.webp`}
+                                      alt="Base Pose"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute top-1.5 left-1.5 bg-black/60 text-[7px] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                      {t("Model Pose") || "Model Pose"}
+                                    </div>
+                                  </div>
+                                  {/* Divider with arrow */}
+                                  <div className="absolute left-1/2 top-[55%] -translate-x-1/2 -translate-y-1/2 z-20 bg-white rounded-full p-1 shadow-md border border-gray-200">
+                                    <span className="text-[10px] font-bold text-pink-600">+</span>
+                                  </div>
+                                  {/* Bottom: Garment Fabric */}
+                                  <div className="h-[45%] w-full relative">
+                                    <img
+                                      src={currentGen.original_image_url}
+                                      alt="Garment Design"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute top-1.5 left-1.5 bg-pink-600 text-[7px] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                      {t("Your Design") || "Your Design"}
+                                    </div>
+                                  </div>
+                                  {/* Badge Overlay */}
+                                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-amber-500/90 text-white text-[8px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider whitespace-nowrap shadow-md">
+                                    ⚡ {t("Preview Only — Add API Credit for AI Try-On") || "Preview Only — Add API Credit for AI Try-On"}
+                                  </div>
+                                </div>
+                              ) : (
+                                <img
+                                  src={displayImg}
+                                  alt="Generated result"
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
+                              {/* Hover Action Overlay */}
+                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200 z-10">
+                                <button
+                                  onClick={() => setSelectedVideo({ title: `Project: ${currentGen.id.substring(0, 8)}`, src: displayImg })}
+                                  className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                                  title={t("View Image") || "View Image"}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => downloadImage(displayImg, `sareeviz-gen-${currentGen.id.substring(0, 8)}.png`)}
+                                  className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                                  title={t("Download Image") || "Download Image"}
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          )}
+
+                          {isFailed && (
+                            <div className="text-center p-6">
+                              <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-2" />
+                              <p className="text-sm font-bold text-gray-800">{t("Failed") || "Failed"}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // If no active/last generation, show the default empty state
+                return (
+                  <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center py-16 px-8 mb-6">
+                    <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center mb-4 border border-gray-100">
+                      <ImageIcon className="h-7 w-7 text-gray-300" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">
+                      {t("No content generated yet")}
+                    </h3>
+                    <p className="text-sm text-gray-500 text-center max-w-xs">
+                      {t("Upload your design and click Generate Images or Generate Video.")}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Example Videos */}
               <div className="mb-8">
@@ -1681,11 +2090,40 @@ export default function StudioPage() {
                     className="relative aspect-[3/4] bg-white rounded-xl border border-gray-200 overflow-hidden group shadow-sm flex flex-col hover:shadow-md transition-shadow"
                   >
                     {displayImg ? (
-                      <img
-                        src={displayImg}
-                        alt="Generation item"
-                        className="w-full h-full object-cover"
-                      />
+                      gen.model_settings?.is_mock ? (
+                        <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
+                          {/* Top: Model Pose */}
+                          <div className="h-[55%] w-full relative">
+                            <img
+                              src={`/poses/pose${getPoseNum(gen.model_settings?.modelPose)}.webp`}
+                              alt="Base Pose"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          {/* Divider */}
+                          <div className="absolute left-1/2 top-[55%] -translate-x-1/2 -translate-y-1/2 z-20 bg-white rounded-full w-5 h-5 flex items-center justify-center shadow-md border border-gray-200">
+                            <span className="text-[9px] font-bold text-pink-600">+</span>
+                          </div>
+                          {/* Bottom: Garment */}
+                          <div className="h-[45%] w-full relative">
+                            <img
+                              src={gen.original_image_url}
+                              alt="Garment Design"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          {/* Badge */}
+                          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-10 bg-amber-500/90 text-white text-[7px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap shadow-sm">
+                            ⚡ {t("Preview") || "Preview"}
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={displayImg}
+                          alt="Generation item"
+                          className="w-full h-full object-cover"
+                        />
+                      )
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
                         <ImageIcon className="h-6 w-6" />
@@ -1693,27 +2131,47 @@ export default function StudioPage() {
                     )}
                     
                     {/* Status indicator pill */}
-                    <div className="absolute top-2 left-2 z-15">
+                    <div className="absolute top-2 left-2 z-20">
                       <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur-md bg-white/90 ${
                         gen.status === "done"
                           ? "text-green-600 border border-green-200/50"
-                          : gen.status === "pending"
+                          : gen.status === "pending" || gen.status === "processing"
                           ? "text-amber-600 border border-amber-200/50 animate-pulse"
                           : "text-red-600 border border-red-200/50"
                       }`}>
-                        {gen.status}
+                        {t(gen.status)}
                       </span>
                     </div>
 
-                    {/* Quick Lightbox Action on hover */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-10">
-                      <button
-                        onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
-                        className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {/* Pending / Processing Loader Overlay */}
+                    {(gen.status === "pending" || gen.status === "processing") && (
+                      <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex flex-col items-center justify-center z-10">
+                        <Loader2 className="h-6 w-6 text-pink-500 animate-spin mb-1.5" />
+                        <span className="text-[10px] text-gray-500 font-medium capitalize animate-pulse">
+                          {t(gen.status)}...
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Action Overlay on hover */}
+                    {gen.status === "done" && (
+                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200 z-10">
+                        <button
+                          onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
+                          className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                          title={t("View Image") || "View Image"}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => downloadImage(displayImg, `sareeviz-gen-${gen.id.substring(0, 8)}.png`)}
+                          className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                          title={t("Download Image") || "Download Image"}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1752,7 +2210,7 @@ export default function StudioPage() {
         </div>
       </div>
 
-      {/* Video Player Modal */}
+      {/* Media Player Modal */}
       <Dialog open={!!selectedVideo} onOpenChange={(open) => !open && setSelectedVideo(null)}>
         <DialogContent className="sm:max-w-3xl p-0 border-0 bg-black overflow-hidden flex flex-col shadow-2xl rounded-xl [&>button]:top-3 [&>button]:right-4 [&>button]:text-gray-500 hover:[&>button]:text-gray-900">
           <DialogHeader className="px-5 py-3.5 bg-white flex flex-row items-center justify-between">
@@ -1762,12 +2220,20 @@ export default function StudioPage() {
           </DialogHeader>
           <div className="relative w-full aspect-[9/16] md:aspect-video bg-black flex items-center justify-center">
             {selectedVideo && (
-              <video 
-                src={selectedVideo.src} 
-                controls 
-                autoPlay 
-                className="h-full max-h-[75vh] w-auto mx-auto object-contain"
-              />
+              selectedVideo.src.includes(".mp4") || selectedVideo.src.includes("/videos/") ? (
+                <video 
+                  src={selectedVideo.src} 
+                  controls 
+                  autoPlay 
+                  className="h-full max-h-[75vh] w-auto mx-auto object-contain"
+                />
+              ) : (
+                <img 
+                  src={selectedVideo.src} 
+                  alt={selectedVideo.title}
+                  className="h-full max-h-[75vh] w-auto mx-auto object-contain animate-fade-in"
+                />
+              )
             )}
           </div>
         </DialogContent>
