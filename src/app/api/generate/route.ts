@@ -162,18 +162,12 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
         const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
         const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
-        // Fetch images as Blobs to send to Gradio Client
-        const humanRes = await fetch(humanImgUrl);
-        const humanBlob = new Blob([await humanRes.arrayBuffer()], { type: "image/jpeg" });
-
-        const garmRes = await fetch(original_image_url);
-        const garmBlob = new Blob([await garmRes.arrayBuffer()], { type: "image/jpeg" });
-
-        const app = await Client.connect(kaggleVtonUrl);
+        const hfToken = process.env.HUGGINGFACE_API_KEY;
+        const app = await Client.connect(kaggleVtonUrl, hfToken ? { hf_token: hfToken } : {});
         
         const result = await app.predict("/tryon", [
-          { background: humanBlob, layers: [], composite: null },
-          garmBlob,
+          { background: handle_file(humanImgUrl), layers: [], composite: null },
+          handle_file(original_image_url),
           garmentDescription,
           true,  // is_checked
           false, // is_checked_crop
@@ -215,9 +209,66 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
+    // ─── STRATEGY KOLORS: Kwai-Kolors Virtual Try-On (Secondary Free High-Fidelity) ───
+    if (generationStatus !== "done" && !useMockMode) {
+      try {
+        console.log("Attempting Kwai-Kolors Virtual Try-On API generation...");
+        
+        const poseMapping: Record<string, number> = {
+          "Front Standing": 1, "Left Profile": 2, "Back View": 3,
+          "Leaning on Wall": 4, "Seated": 5, "Walking": 6,
+          "Close-up Portrait": 7, "Right Profile": 8,
+        };
+        const poseNum = poseMapping[modelPose] || 1;
+        const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
+        const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
+
+        const hfToken = process.env.HUGGINGFACE_API_KEY;
+        const app = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { hf_token: hfToken } : {});
+        
+        const result = await app.predict(2, [
+          handle_file(humanImgUrl),
+          handle_file(original_image_url),
+          42,   // seed
+          true, // random seed
+        ]) as any;
+
+        if (result && result.data && result.data[0]) {
+          const generatedImageUrlFromGradio = result.data[0].url;
+
+          // Fetch the generated image from Kwai-Kolors server
+          const genRes = await fetch(generatedImageUrlFromGradio);
+          const genArrayBuffer = await genRes.arrayBuffer();
+          const base64Data = Buffer.from(genArrayBuffer).toString("base64");
+          
+          const tempId = `kolors_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+          const publicUrl = await uploadBase64ToStorage(
+            supabase,
+            base64Data,
+            "image/png",
+            user.id,
+            tempId
+          );
+
+          if (publicUrl) {
+            generatedImageUrl = publicUrl;
+            generationStatus = "done";
+            generationProvider = "kolors_vton";
+            console.log("Kwai-Kolors Virtual Try-On generation succeeded!");
+          } else {
+            console.error("Failed to upload Kwai-Kolors image to storage.");
+          }
+        } else {
+          console.error("No image data returned from Kwai-Kolors Gradio API.");
+        }
+      } catch (err: any) {
+        console.error("Kwai-Kolors VTON error:", err?.message || err);
+      }
+    }
+
     // ─── STRATEGY 0: Pollinations AI FLUX (Free, Keyless Primary) ───
     const forcePollinations = process.env.USE_POLLINATIONS === "true";
-    if (forcePollinations && !useMockMode) {
+    if (generationStatus !== "done" && forcePollinations && !useMockMode) {
       try {
         console.log("Attempting primary Pollinations AI FLUX generation...");
         let width = 1024;
@@ -278,7 +329,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
 
     // ─── STRATEGY 0.5: Together AI (FLUX.1 Dev) ───
     const togetherApiKey = process.env.TOGETHER_API_KEY;
-    if (togetherApiKey && !useMockMode) {
+    if (generationStatus !== "done" && togetherApiKey && !useMockMode) {
       try {
         console.log("Attempting Together AI FLUX.1 Dev generation...");
 
@@ -421,7 +472,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
 
     // ─── STRATEGY 1: Gemini API (Free, Primary) ───
     const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (geminiApiKey && !useMockMode) {
+    if (generationStatus !== "done" && geminiApiKey && !useMockMode) {
       try {
         console.log("Attempting Gemini API generation...");
 

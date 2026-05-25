@@ -249,6 +249,11 @@ export default function StudioPage() {
     try {
       setIsGenerating(true);
 
+      let finalPoseModelBg = uploads["pose_model_bg"] || null;
+      if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+        finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+      }
+
       const payload = {
         generateFor,
         photographyStyle,
@@ -260,7 +265,7 @@ export default function StudioPage() {
         backgroundStyle,
         sareeColourHint,
         original_image_url: mainDesignUrl,
-        pose_model_bg: uploads["pose_model_bg"] || null,
+        pose_model_bg: finalPoseModelBg,
         useMockMode: useMockMode,
       };
 
