@@ -124,6 +124,53 @@ export default function StudioPage() {
     fetchDashboardData();
   }, []);
 
+  // Supabase Realtime subscription for generation updates
+  useEffect(() => {
+    let activeChannel: any;
+
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      activeChannel = supabase
+        .channel(`generations-realtime-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "generations",
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log("Realtime generation update received:", payload);
+            if (payload.eventType === "INSERT") {
+              setRecentGenerations((prev) => [payload.new as any, ...prev.slice(0, 9)]);
+            } else if (payload.eventType === "UPDATE") {
+              setRecentGenerations((prev) =>
+                prev.map((g) => (g.id === payload.new.id ? (payload.new as any) : g))
+              );
+              
+              if (payload.new.status === "done" || payload.new.status === "failed") {
+                fetchDashboardData();
+              }
+            } else if (payload.eventType === "DELETE") {
+              setRecentGenerations((prev) => prev.filter((g) => g.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtime();
+
+    return () => {
+      if (activeChannel) {
+        supabase.removeChannel(activeChannel);
+      }
+    };
+  }, []);
+
   // Client-side polling logic for active jobs
   useEffect(() => {
     const activeGens = recentGenerations.filter(
