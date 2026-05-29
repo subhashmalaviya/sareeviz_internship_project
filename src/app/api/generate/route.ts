@@ -758,9 +758,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
 
       isMockMode = true;
-      generationStatus = "done";
+      generationStatus = "pending";
       generationProvider = "mock";
-      generatedImageUrl = original_image_url; // Show original as placeholder
+      generatedImageUrl = ""; // Keep empty; status polling will resolve it to original_image_url
       console.warn("Running in Mock Mode — no AI provider available.");
     }
 

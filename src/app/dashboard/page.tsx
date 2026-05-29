@@ -127,10 +127,11 @@ export default function StudioPage() {
   // Supabase Realtime subscription for generation updates
   useEffect(() => {
     let activeChannel: any;
+    let isMounted = true;
 
     const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !isMounted) return;
 
       activeChannel = supabase
         .channel(`generations-realtime-${user.id}`)
@@ -165,6 +166,7 @@ export default function StudioPage() {
     setupRealtime();
 
     return () => {
+      isMounted = false;
       if (activeChannel) {
         supabase.removeChannel(activeChannel);
       }
@@ -1919,11 +1921,16 @@ export default function StudioPage() {
 
               {(() => {
                 const currentGen = recentGenerations.find(g => g.id === currentGenId);
-                if (currentGen) {
-                  const isPending = currentGen.status === "pending" || currentGen.status === "processing";
-                  const isDone = currentGen.status === "done";
-                  const isFailed = currentGen.status === "failed";
-                  const displayImg = isDone ? currentGen.generated_image_url : currentGen.original_image_url;
+                const showPendingUI = isGenerating || (currentGen && (currentGen.status === "pending" || currentGen.status === "processing"));
+                
+                if (currentGen || isGenerating) {
+                  const isPending = showPendingUI;
+                  const isDone = currentGen && currentGen.status === "done" && !isGenerating;
+                  const isFailed = currentGen && currentGen.status === "failed" && !isGenerating;
+
+                  const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+                  const uploadedImg = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+                  const displayImg = isDone ? currentGen.generated_image_url : (currentGen?.original_image_url || uploadedImg);
 
                   return (
                     <div className="mb-6">
@@ -1932,7 +1939,7 @@ export default function StudioPage() {
                         disabled={!isDone}
                         onClick={() => {
                           if (displayImg) {
-                            downloadImage(displayImg, `sareeviz-gen-${currentGen.id.substring(0, 8)}.png`);
+                            downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.png`);
                           }
                         }}
                         className={`w-full h-11 rounded-xl shadow-sm text-sm font-semibold flex items-center justify-center gap-2 mb-4 border transition-all
@@ -1991,12 +1998,12 @@ export default function StudioPage() {
 
                           {isDone && displayImg && (
                             <>
-                              {currentGen.model_settings?.is_mock ? (
+                              {currentGen?.model_settings?.is_mock ? (
                                 <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
                                   {/* Top: Model Pose */}
                                   <div className="h-[55%] w-full relative">
                                     <img
-                                      src={`/poses/pose${getPoseNum(currentGen.model_settings?.modelPose)}.webp`}
+                                      src={`/poses/pose${getPoseNum(currentGen?.model_settings?.modelPose)}.webp`}
                                       alt="Base Pose"
                                       className="w-full h-full object-cover"
                                     />
@@ -2011,7 +2018,7 @@ export default function StudioPage() {
                                   {/* Bottom: Garment Fabric */}
                                   <div className="h-[45%] w-full relative">
                                     <img
-                                      src={currentGen.original_image_url}
+                                      src={currentGen?.original_image_url || uploadedImg}
                                       alt="Garment Design"
                                       className="w-full h-full object-cover"
                                     />
@@ -2034,14 +2041,14 @@ export default function StudioPage() {
                               {/* Hover Action Overlay */}
                               <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200 z-10">
                                 <button
-                                  onClick={() => setSelectedVideo({ title: `Project: ${currentGen.id.substring(0, 8)}`, src: displayImg })}
+                                  onClick={() => setSelectedVideo({ title: `Project: ${currentGen ? currentGen.id.substring(0, 8) : "new"}`, src: displayImg })}
                                   className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
                                   title={t("View Image") || "View Image"}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => downloadImage(displayImg, `sareeviz-gen-${currentGen.id.substring(0, 8)}.png`)}
+                                  onClick={() => downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.png`)}
                                   className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
                                   title={t("Download Image") || "Download Image"}
                                 >
