@@ -2,6 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { Client, handle_file } from "@gradio/client";
+import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer } from "@/utils/ai";
 
 // Helper to upload base64 image to Supabase Storage
 async function uploadBase64ToStorage(
@@ -36,24 +37,6 @@ async function uploadBase64ToStorage(
   }
 }
 
-// Helper to fetch an image URL and convert to base64
-async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const contentType = res.headers.get("content-type") || "image/jpeg";
-    return {
-      data: buffer.toString("base64"),
-      mimeType: contentType.split(";")[0].trim(),
-    };
-  } catch (err) {
-    console.error("Failed to fetch image as base64:", err);
-    return null;
-  }
-}
-
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -80,6 +63,9 @@ export async function POST(request: Request) {
       original_image_url,
       pose_model_bg,
       useMockMode,
+      aiPipeline = "auto",
+      additional_designs = {},
+      catalogueOption = "display_rack",
     } = body;
 
     // Validate main design URL
@@ -91,11 +77,25 @@ export async function POST(request: Request) {
     }
 
     // Retrieve user credits
-    const { data: credits, error: creditsErr } = await supabase
+    let { data: credits, error: creditsErr } = await supabase
       .from("credits")
       .select("balance")
       .eq("user_id", user.id)
       .single();
+
+    if (!credits) {
+      // Auto-initialize credits for the user to 20 if it doesn't exist
+      const { data: newCredits, error: createErr } = await supabase
+        .from("credits")
+        .insert({ user_id: user.id, balance: 20 })
+        .select()
+        .single();
+      
+      if (!createErr && newCredits) {
+        credits = newCredits;
+        creditsErr = null;
+      }
+    }
 
     if (creditsErr || !credits) {
       return NextResponse.json(
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (credits.balance < 1) {
+    if (!useMockMode && credits.balance < 1) {
       return NextResponse.json(
         { error: "Insufficient credits" },
         { status: 400 }
@@ -113,21 +113,89 @@ export async function POST(request: Request) {
 
     const garmentDescription = `${sareeColourHint || "beautiful"} ${generateFor || "saree"}`;
 
+    let additionalPromptDetails = "";
+    if (additional_designs) {
+      if (additional_designs.saree_blouse_design) {
+        additionalPromptDetails += `\n- BLOUSE DESIGN: The model should wear a blouse matching the design, pattern, and color shown in the blouse design reference image.`;
+      }
+      if (additional_designs.saree_dupatta_design || additional_designs.lehenga_dupatta_design || additional_designs.salwar_dupatta_design) {
+        additionalPromptDetails += `\n- DUPATTA DESIGN: The model should have a dupatta matching the design, pattern, and color shown in the dupatta design reference image.`;
+      }
+      if (additional_designs.saree_pallu_design) {
+        additionalPromptDetails += `\n- PALLU/DRAPE DESIGN: The pallu/drape of the saree must match the design, patterns, and borders shown in the pallu reference image.`;
+      }
+      if (additional_designs.lehenga_choli_design) {
+        additionalPromptDetails += `\n- CHOLI DESIGN: The model should wear a choli matching the design, pattern, and color shown in the choli design reference image.`;
+      }
+      
+      const bottomDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`;
+      if (additional_designs[bottomDesignKey] || additional_designs.dress_bottom_design) {
+        additionalPromptDetails += `\n- BOTTOM WEAR DESIGN: The bottom wear (pants/skirt/salwar) must match the design, style, and pattern shown in the bottom wear design reference image.`;
+      }
+      
+      if (additional_designs.salwar_back_design || additional_designs.dress_back_design || additional_designs.innerwear_back_design) {
+        additionalPromptDetails += `\n- BACK DESIGN: The back design of the garment must match the design and pattern shown in the back design reference image.`;
+      }
+      if (additional_designs.salwar_sleeve_design) {
+        additionalPromptDetails += `\n- SLEEVE DESIGN: The sleeves of the garment must match the design, patterns, and borders shown in the sleeve design reference image.`;
+      }
+      if (additional_designs.closeup_reference) {
+        additionalPromptDetails += `\n- FABRIC & TEXTURE DETAILS: Refer to the close-up design reference image for high-precision details of the embroidery, patterns, weave, and texture of the main garment.`;
+      }
+      if (additional_designs.colour_matching) {
+        additionalPromptDetails += `\n- COLOR MATCHING: Incorporate the color matching options and color coordinates shown in the color matching reference image.`;
+      }
+    }
+
+    if (photographyStyle === "model") {
+      if (catalogueOption === "display_rack") {
+        additionalPromptDetails += `\n- CATALOGUE OPTIONS: Display the matching color options on an elegant display rack/hanger on the side of the main model in the background.`;
+      } else if (catalogueOption === "multiple_models") {
+        additionalPromptDetails += `\n- CATALOGUE OPTIONS: Show multiple models wearing the garment in different matching color options in a professional catalogue lineup.`;
+      }
+    }
+
+    const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
+    const isJewelry = (generateFor || "").toLowerCase().trim() === "jewelry";
+    const isStole = (generateFor || "").toLowerCase().trim() === "stole";
+
+    const bottomDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`;
+    const hasBottomWear = !!(additional_designs[bottomDesignKey] || additional_designs.dress_bottom_design);
+
+    const modelGender = isMaleCategory ? "Indian man" : "Indian woman";
+    const itemNoun = isJewelry ? "jewelry piece" : (isStole ? "stole" : "garment");
+
+    // Dynamic prompt phrasing based on presence of bottom wear
+    const openingInstruction = hasBottomWear 
+      ? `wearing the EXACT ${itemNoun} AND matching bottom wear shown in the attached reference images.`
+      : `wearing the EXACT ${itemNoun} shown in the attached image.`;
+
+    const criticalRequirements = hasBottomWear
+      ? `- The model MUST be wearing the EXACT same ${itemNoun} AND bottom wear from the reference images — preserve the exact fabric/material patterns, colors, embroidery, borders, and all textile/material details of both pieces with pixel-level accuracy.\n- Do NOT change, simplify, or reinterpret the designs. Reproduce both faithfully.`
+      : `- The model MUST be wearing the EXACT same ${itemNoun} from the reference image — preserve the exact fabric/material patterns, colors, embroidery, border design, and all textile/material details with pixel-level accuracy.\n- Do NOT change, simplify, or reinterpret the ${itemNoun} design. Reproduce it faithfully.`;
+
+    const drapeInstruction = isJewelry 
+      ? "The jewelry should be styled and worn elegantly on the model (neck, ears, or wrists as appropriate)." 
+      : (isStole 
+          ? "The stole should be draped elegantly around the model's neck or shoulders." 
+          : (hasBottomWear 
+              ? "The garment and bottom wear should be styled and worn elegantly as a complete outfit." 
+              : "The garment should be draped/worn traditionally and elegantly"));
+
     // Build a detailed prompt for virtual try-on
-    const prompt = `You are a professional fashion photographer AI. Generate a single, high-quality, photorealistic image of an Indian fashion model wearing the EXACT garment shown in the attached image.
+    const prompt = `You are a professional fashion photographer AI. Generate a single, high-quality, photorealistic image of an ${isMaleCategory ? "Indian male model" : "Indian female model"} ${openingInstruction}
 
 CRITICAL REQUIREMENTS:
-- The model MUST be wearing the EXACT same garment from the reference image — preserve the exact fabric pattern, colors, embroidery, border design, and all textile details with pixel-level accuracy.
-- Do NOT change, simplify, or reinterpret the garment design. Reproduce it faithfully.
+${criticalRequirements}${additionalPromptDetails}
 
 MODEL DETAILS:
-- Skin tone: ${skinTone || "Wheatish"} Indian woman
+- Skin tone: ${skinTone || "Wheatish"} ${modelGender}
 - Pose: ${modelPose || "Front Standing"} — full body, head to toe
 - Expression: Warm, natural smile with confident posture
 
-GARMENT: ${garmentDescription}
+GARMENT/ITEM: ${garmentDescription}${hasBottomWear ? " paired with matching bottom wear" : ""}
 - Category: ${generateFor || "saree"}
-- The garment should be draped/worn traditionally and elegantly
+- ${drapeInstruction}
 
 BACKGROUND: ${backgroundStyle || "Luxury Palace / Haveli"}
 - Professional studio-quality lighting with soft shadows
@@ -146,6 +214,61 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     let replicateErrorMsg = "";
     let pollinationsErrorMsg = "";
     let kaggleErrorMsg = "";
+    let openrouterErrorMsg = "";
+    let vtonBase64 = "";
+    let vtonMime = "";
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+
+    // ─── STRATEGY OPENROUTER: Direct OpenRouter generation ───
+    const additionalUrls = additional_designs 
+      ? Object.entries(additional_designs)
+          .filter(([key, val]) => val && typeof val === "string" && val.startsWith("http") && key !== `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`)
+          .map(([_, val]) => val as string)
+      : [];
+
+    const isDirectOpenRouter = ["openrouter_gemini", "openrouter_flux_pro", "openrouter_flux_flex"].includes(aiPipeline);
+    if (generationStatus !== "done" && isDirectOpenRouter && !useMockMode && openRouterApiKey) {
+      try {
+        console.log(`Attempting Direct OpenRouter generation with pipeline: ${aiPipeline}...`);
+        let model = "google/gemini-2.5-flash-image";
+        if (aiPipeline === "openrouter_flux_pro") {
+          model = "black-forest-labs/flux-2-pro";
+        } else if (aiPipeline === "openrouter_flux_flex") {
+          model = "black-forest-labs/flux-2-flex";
+        }
+
+        const { base64Data, mimeType } = await generateViaOpenRouter(
+          openRouterApiKey,
+          model,
+          prompt,
+          original_image_url,
+          aspectRatio,
+          additionalUrls
+        );
+
+        const tempId = `openrouter_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const publicUrl = await uploadBase64ToStorage(
+          supabase,
+          base64Data,
+          mimeType,
+          user.id,
+          tempId
+        );
+
+        if (publicUrl) {
+          generatedImageUrl = publicUrl;
+          generationStatus = "done";
+          generationProvider = `openrouter_${model.split("/")[1] || model}`;
+          console.log(`Direct OpenRouter generation succeeded!`);
+        } else {
+          openrouterErrorMsg = "Failed to upload OpenRouter image to storage.";
+        }
+      } catch (err: any) {
+        console.error("Direct OpenRouter generation error:", err?.message || err);
+        openrouterErrorMsg = err?.message || String(err);
+      }
+    }
 
     // ─── STRATEGY KAGGLE: Custom IDM-VTON Pipeline (Primary Free High-Fidelity) ───
     const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
@@ -162,8 +285,8 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
         const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
         const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
-        const hfToken = process.env.HUGGINGFACE_API_KEY;
-        const app = await Client.connect(kaggleVtonUrl, hfToken ? { hf_token: hfToken } : {});
+        const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
+        const app = await Client.connect(kaggleVtonUrl, hfToken ? { token: hfToken } : {});
         
         const result = await app.predict("/tryon", [
           { background: handle_file(humanImgUrl), layers: [], composite: null },
@@ -196,6 +319,8 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             generatedImageUrl = publicUrl;
             generationStatus = "done";
             generationProvider = "kaggle_vton";
+            vtonBase64 = base64Data;
+            vtonMime = "image/png";
             console.log("Kaggle IDM-VTON generation succeeded!");
           } else {
             kaggleErrorMsg = "Failed to upload Kaggle image to storage.";
@@ -223,8 +348,8 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
         const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
         const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
-        const hfToken = process.env.HUGGINGFACE_API_KEY;
-        const app = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { hf_token: hfToken } : {});
+        const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
+        const app = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { token: hfToken } : {});
         
         const result = await app.predict(2, [
           handle_file(humanImgUrl),
@@ -254,6 +379,8 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             generatedImageUrl = publicUrl;
             generationStatus = "done";
             generationProvider = "kolors_vton";
+            vtonBase64 = base64Data;
+            vtonMime = "image/png";
             console.log("Kwai-Kolors Virtual Try-On generation succeeded!");
           } else {
             console.error("Failed to upload Kwai-Kolors image to storage.");
@@ -263,6 +390,74 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
         }
       } catch (err: any) {
         console.error("Kwai-Kolors VTON error:", err?.message || err);
+      }
+    }
+
+    // ─── HYBRID PIPELINE STEP 2: Gemini Face/Background Refinement ───
+    const mainDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+    const hasAdditionalClothing = additional_designs 
+      ? Object.entries(additional_designs).some(([key, val]) => 
+          val && typeof val === "string" && val.startsWith("http") && key !== mainDesignKey
+        )
+      : false;
+    const shouldEnhance = aiPipeline === "hybrid" || (aiPipeline === "auto" && hasAdditionalClothing);
+
+    if (generationStatus === "done" && shouldEnhance && (openRouterApiKey || geminiApiKey) && vtonBase64) {
+      try {
+        console.log("VTON completed. Triggering Hybrid Step 2: Gemini Face/BG Enhancement...");
+        const { base64Data: enhancedBase64, mimeType: enhancedMime } = await enhanceImageWithGemini({
+          base64Image: vtonBase64,
+          mimeType: vtonMime || "image/png",
+          prompt: prompt,
+          openRouterApiKey,
+          geminiApiKey,
+          generateFor: generateFor,
+          additionalImageUrls: additionalUrls
+        });
+
+        const tempId = `enhanced_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const publicUrl = await uploadBase64ToStorage(
+          supabase,
+          enhancedBase64,
+          enhancedMime,
+          user.id,
+          tempId
+        );
+
+        if (publicUrl) {
+          generatedImageUrl = publicUrl;
+          generationProvider = `${generationProvider}_enhanced`;
+          console.log("Hybrid enhancement step succeeded!");
+        }
+      } catch (err: any) {
+        console.error("Hybrid enhancement step failed, using base VTON output:", err);
+      }
+    }
+
+    // ─── FACE RESTORATION STEP: CodeFormer for Multi-Garment Try-On ───
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
+    if (generationStatus === "done" && aiPipeline === "multi_garment" && replicateToken && generatedImageUrl) {
+      try {
+        console.log("Multi-Garment pipeline: running CodeFormer face restoration...");
+        const restoredUrl = await restoreFaceWithCodeformer(replicateToken, generatedImageUrl);
+        if (restoredUrl) {
+          const fetched = await fetchImageAsBase64(restoredUrl);
+          if (fetched) {
+            const publicUrl = await uploadBase64ToStorage(
+              supabase,
+              fetched.data,
+              fetched.mimeType,
+              user.id,
+              `restored_${Date.now()}`
+            );
+            if (publicUrl) {
+              generatedImageUrl = publicUrl;
+              console.log("CodeFormer face restoration succeeded! Image uploaded:", publicUrl);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("CodeFormer face restoration failed:", err);
       }
     }
 
@@ -470,74 +665,126 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
-    // ─── STRATEGY 1: Gemini API (Free, Primary) ───
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (generationStatus !== "done" && geminiApiKey && !useMockMode) {
+    // ─── STRATEGY 1: Gemini API (Free, Primary) or OpenRouter Gemini fallback ───
+    if (generationStatus !== "done" && !useMockMode && (geminiApiKey || openRouterApiKey)) {
       try {
-        console.log("Attempting Gemini API generation...");
+        if (geminiApiKey) {
+          console.log("Attempting direct Gemini API generation...");
 
-        // Fetch the uploaded garment image as base64
-        const garmentImage = await fetchImageAsBase64(original_image_url);
-        if (!garmentImage) {
-          throw new Error("Failed to fetch garment image for Gemini");
-        }
+          // Fetch the uploaded garment image as base64
+          const garmentImage = await fetchImageAsBase64(original_image_url);
+          if (!garmentImage) {
+            throw new Error("Failed to fetch garment image for Gemini");
+          }
 
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-        const contents = [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: garmentImage.mimeType,
-              data: garmentImage.data,
+          const contents: any[] = [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: garmentImage.mimeType,
+                data: garmentImage.data,
+              },
             },
-          },
-        ];
+          ];
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-image",
-          contents: contents,
-          config: {
-            responseModalities: ["TEXT", "IMAGE"],
-          },
-        });
-
-        // Extract the generated image from the response
-        if (response.candidates && response.candidates[0]?.content?.parts) {
-          for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData && part.inlineData.data) {
-              // We got an image back from Gemini!
-              const mimeType = part.inlineData.mimeType || "image/png";
-
-              // Generate a temporary ID for storage
-              const tempId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-              // Upload to Supabase storage
-              const publicUrl = await uploadBase64ToStorage(
-                supabase,
-                part.inlineData.data,
-                mimeType,
-                user.id,
-                tempId
-              );
-
-              if (publicUrl) {
-                generatedImageUrl = publicUrl;
-                generationStatus = "done";
-                generationProvider = "gemini";
-                console.log("Gemini generation succeeded!");
+          // Fetch and append all other supplementary design images to contents for multi-modal context
+          if (additional_designs) {
+            for (const [key, value] of Object.entries(additional_designs)) {
+              if (value && typeof value === "string" && value.startsWith("http") && key !== `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`) {
+                try {
+                  console.log(`Fetching additional design image [${key}] for Gemini input: ${value}`);
+                  const img = await fetchImageAsBase64(value);
+                  if (img) {
+                    contents.push({
+                      inlineData: {
+                        mimeType: img.mimeType,
+                        data: img.data
+                      }
+                    });
+                  }
+                } catch (e) {
+                  console.error(`Failed to fetch additional design image [${key}] for Gemini:`, e);
+                }
               }
-              break; // Use the first image
+            }
+          }
+
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-image",
+            contents: contents,
+            config: {
+              responseModalities: ["TEXT", "IMAGE"],
+            },
+          });
+
+          // Extract the generated image from the response
+          if (response.candidates && response.candidates[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+              if (part.inlineData && part.inlineData.data) {
+                // We got an image back from Gemini!
+                const mimeType = part.inlineData.mimeType || "image/png";
+
+                // Generate a temporary ID for storage
+                const tempId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+                // Upload to Supabase storage
+                const publicUrl = await uploadBase64ToStorage(
+                  supabase,
+                  part.inlineData.data,
+                  mimeType,
+                  user.id,
+                  tempId
+                );
+
+                if (publicUrl) {
+                  generatedImageUrl = publicUrl;
+                  generationStatus = "done";
+                  generationProvider = "gemini";
+                  console.log("Gemini generation succeeded!");
+                }
+                break; // Use the first image
+              }
             }
           }
         }
 
+        // If direct Gemini wasn't attempted or failed, and OpenRouter is available, try OpenRouter Gemini
+        if (generationStatus !== "done" && openRouterApiKey) {
+          console.log("Attempting OpenRouter Gemini generation as fallback...");
+          const { base64Data, mimeType } = await generateViaOpenRouter(
+            openRouterApiKey,
+            "google/gemini-2.5-flash-image",
+            prompt,
+            original_image_url,
+            aspectRatio,
+            additionalUrls
+          );
+
+          const tempId = `gemini_or_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+          const publicUrl = await uploadBase64ToStorage(
+            supabase,
+            base64Data,
+            mimeType,
+            user.id,
+            tempId
+          );
+
+          if (publicUrl) {
+            generatedImageUrl = publicUrl;
+            generationStatus = "done";
+            generationProvider = "openrouter_gemini";
+            console.log("OpenRouter Gemini generation succeeded!");
+          }
+        }
+
         if (generationStatus !== "done") {
-          console.warn("Gemini response did not contain an image. Falling back...");
-          geminiErrorMsg = "Gemini response did not contain an image part.";
+          console.warn("Gemini/OpenRouter response did not contain an image. Falling back...");
+          geminiErrorMsg = "Gemini/OpenRouter response did not contain an image part.";
         }
       } catch (err: any) {
-        console.error("Gemini API error:", err?.message || err);
+        console.error("Gemini/OpenRouter API error:", err?.message || err);
         geminiErrorMsg = err?.message || String(err);
       }
     }
@@ -563,6 +810,18 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
           const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
+          const getVtonCategory = (cat: string): string => {
+            const normalized = (cat || "").toLowerCase().trim();
+            if (normalized.includes("saree") || normalized.includes("lehenga") || normalized.includes("suit") || normalized.includes("dress")) {
+              return "dresses";
+            }
+            if (normalized.includes("bottom") || normalized.includes("skirt") || normalized.includes("pants") || normalized.includes("salwar")) {
+              return "bottoms";
+            }
+            return "tops";
+          };
+          const vtonCategory = getVtonCategory(generateFor);
+
           const response = await fetch(
             "https://api.replicate.com/v1/predictions",
             {
@@ -578,7 +837,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
                   garm_img: original_image_url,
                   human_img: humanImgUrl,
                   garment_des: garmentDescription,
-                  category: "dresses",
+                  category: vtonCategory,
                   crop: false,
                   steps: 30,
                 },
@@ -612,6 +871,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
                   replicate_id: prediction.id,
                   provider: "replicate",
                   is_mock: false,
+                  aiPipeline,
+                  additional_designs,
+                  catalogueOption,
                 },
               })
               .select()
@@ -787,6 +1049,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           sareeColourHint,
           provider: generationProvider,
           is_mock: isMockMode,
+          aiPipeline,
+          additional_designs,
+          catalogueOption,
         },
       })
       .select()
@@ -801,13 +1066,15 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     }
 
     // Deduct 1 credit securely
-    const { error: creditError } = await supabase
-      .from("credits")
-      .update({ balance: Math.max(0, credits.balance - 1) })
-      .eq("user_id", user.id);
+    if (!isMockMode) {
+      const { error: creditError } = await supabase
+        .from("credits")
+        .update({ balance: Math.max(0, credits.balance - 1) })
+        .eq("user_id", user.id);
 
-    if (creditError) {
-      console.error("Deduct credits failed:", creditError);
+      if (creditError) {
+        console.error("Deduct credits failed:", creditError);
+      }
     }
 
     return NextResponse.json(genData);

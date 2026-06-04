@@ -20,6 +20,11 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Trash2,
+  Maximize2,
+  RotateCw,
+  Sliders,
+  Scissors
 } from "lucide-react";
 import {
   Accordion,
@@ -112,12 +117,293 @@ export default function StudioPage() {
   const [currentGenId, setCurrentGenId] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<{message: string, code?: string} | null>(null);
   const [useMockMode, setUseMockMode] = useState(true);
+  const [aiPipeline, setAiPipeline] = useState("auto");
 
   // Video specific state
   const [videoCategory, setVideoCategory] = useState("apparel");
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoDuration, setVideoDuration] = useState("15s");
   const [videoAspectRatio, setVideoAspectRatio] = useState("9:16 (Reels/Shorts)");
+
+  // Multi-Garment Try-On States
+  const [combineSaree, setCombineSaree] = useState<string>("");
+  const [combineBlouse, setCombineBlouse] = useState<string>("");
+  const [combineModel, setCombineModel] = useState<string>("");
+  const [isCustomModel, setIsCustomModel] = useState<boolean>(false);
+  const [selectedCombinePose, setSelectedCombinePose] = useState<number>(1);
+  const [isSegmenting, setIsSegmenting] = useState<boolean>(false);
+  const [segmentingStatus, setSegmentingStatus] = useState<string>("");
+  const [segmentedSaree, setSegmentedSaree] = useState<string>("");
+  const [segmentedBlouse, setSegmentedBlouse] = useState<string>("");
+  const [selectedLayer, setSelectedLayer] = useState<"saree" | "blouse">("saree");
+  const [isComposerOpen, setIsComposerOpen] = useState<boolean>(false);
+  const [sareeLayer, setSareeLayer] = useState({
+    x: 10,
+    y: 35,
+    scale: 0.8,
+    rotation: 0,
+    zIndex: 2,
+  });
+  const [blouseLayer, setBlouseLayer] = useState({
+    x: 25,
+    y: 10,
+    scale: 0.5,
+    rotation: 0,
+    zIndex: 1,
+  });
+
+  // Client-side base64 upload to Supabase storage helper
+  const uploadBase64ToSupabase = async (base64Data: string, fileName: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const filePath = `${user.id}/${Date.now()}_${fileName}.png`;
+    
+    const byteString = atob(base64Data.split(",")[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: "image/png" });
+
+    const { error } = await supabase.storage
+      .from("designs")
+      .upload(filePath, blob, {
+        contentType: "image/png",
+        upsert: true
+      });
+
+    if (error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("designs")
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  // Automated background segmentation and composition for multiple garments under Image tab
+  const autoComposeGarments = async (
+    mainUrl: string,
+    secondUrl: string,
+    type: "saree" | "lehenga" | "top_bottom"
+  ): Promise<string> => {
+    // 1. Segment both garments
+    const segmentGarment = async (url: string, name: string) => {
+      const res = await fetch("/api/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: url })
+      });
+      if (!res.ok) {
+        throw new Error(`Segmentation failed for ${name}: ${res.statusText}`);
+      }
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data.segmentedUrl;
+    };
+
+    const mainSegmented = await segmentGarment(mainUrl, "main design");
+    const secondSegmented = await segmentGarment(secondUrl, "secondary design");
+
+    // 2. Composite onto canvas
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 768;
+      canvas.height = 1024;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get 2D context"));
+        return;
+      }
+
+      // Draw white background
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Load both images
+      const img1 = new Image();
+      const img2 = new Image();
+      img1.crossOrigin = "anonymous";
+      img2.crossOrigin = "anonymous";
+
+      let loadedCount = 0;
+      const checkLoaded = () => {
+        loadedCount++;
+        if (loadedCount === 2) {
+          try {
+            // Both images loaded, draw them based on type
+            if (type === "saree" || type === "lehenga") {
+              // img1 is Saree/Lehenga, img2 is Blouse/Choli
+              // We want Blouse/Choli at the top, Saree/Lehenga draping below it
+              
+              // Blouse/Choli: width = 50%, top y = 12%
+              ctx.save();
+              const bWidth = 0.5 * canvas.width;
+              const bAspect = img2.naturalHeight / img2.naturalWidth;
+              const bHeight = bWidth * bAspect;
+              const bX = (canvas.width - bWidth) / 2;
+              const bY = 0.12 * canvas.height;
+              ctx.drawImage(img2, bX, bY, bWidth, bHeight);
+              ctx.restore();
+
+              // Saree/Lehenga: width = 80%, top y = 35%
+              ctx.save();
+              const sWidth = 0.8 * canvas.width;
+              const sAspect = img1.naturalHeight / img1.naturalWidth;
+              const sHeight = sWidth * sAspect;
+              const sX = (canvas.width - sWidth) / 2;
+              const sY = type === "lehenga" ? 0.42 * canvas.height : 0.35 * canvas.height;
+              ctx.drawImage(img1, sX, sY, sWidth, sHeight);
+              ctx.restore();
+            } else {
+              // type === "top_bottom"
+              // img1 is Top (Kurti, Kurta, etc.), img2 is Bottom (pants, skirt, etc.)
+              
+              // Top: width = 60%, top y = 15%
+              ctx.save();
+              const tWidth = 0.6 * canvas.width;
+              const tAspect = img1.naturalHeight / img1.naturalWidth;
+              const tHeight = tWidth * tAspect;
+              const tX = (canvas.width - tWidth) / 2;
+              const tY = 0.15 * canvas.height;
+              ctx.drawImage(img1, tX, tY, tWidth, tHeight);
+              ctx.restore();
+
+              // Bottom: width = 55%, top y = 50%
+              ctx.save();
+              const bWidth = 0.55 * canvas.width;
+              const bAspect = img2.naturalHeight / img2.naturalWidth;
+              const bHeight = bWidth * bAspect;
+              const bX = (canvas.width - bWidth) / 2;
+              const bY = 0.50 * canvas.height;
+              ctx.drawImage(img2, bX, bY, bWidth, bHeight);
+              ctx.restore();
+            }
+            resolve(canvas.toDataURL("image/png"));
+          } catch (err) {
+            reject(err);
+          }
+        }
+      };
+
+      img1.onload = checkLoaded;
+      img1.onerror = () => reject(new Error("Failed to load main garment image"));
+      img2.onload = checkLoaded;
+      img2.onerror = () => reject(new Error("Failed to load secondary garment image"));
+
+      // Start loading
+      img1.src = mainSegmented;
+      img2.src = secondSegmented;
+    });
+  };
+
+
+  // Garment Segmentation Action using Replicate rembg
+  const segmentGarments = async () => {
+    if (!combineSaree || !combineBlouse) {
+      alert(t("Please upload both Saree and Blouse images first!") || "Please upload both Saree and Blouse images first!");
+      return;
+    }
+    try {
+      setIsSegmenting(true);
+      setSegmentingStatus(t("Removing Saree background (SAM/Rembg)...") || "Removing Saree background...");
+
+      const sareeRes = await fetch("/api/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: combineSaree })
+      });
+      if (!sareeRes.ok) {
+        throw new Error(`Saree segmentation failed: ${sareeRes.statusText}`);
+      }
+      const sareeData = await sareeRes.json();
+      if (sareeData.error) throw new Error(sareeData.error);
+      setSegmentedSaree(sareeData.segmentedUrl);
+
+      setSegmentingStatus(t("Removing Blouse background (SAM/Rembg)...") || "Removing Blouse background...");
+      const blouseRes = await fetch("/api/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: combineBlouse })
+      });
+      if (!blouseRes.ok) {
+        throw new Error(`Blouse segmentation failed: ${blouseRes.statusText}`);
+      }
+      const blouseData = await blouseRes.json();
+      if (blouseData.error) throw new Error(blouseData.error);
+      setSegmentedBlouse(blouseData.segmentedUrl);
+
+      setIsComposerOpen(true);
+    } catch (err: any) {
+      console.error("Garment segmentation failed:", err);
+      alert(`Segmentation failed: ${err.message}`);
+    } finally {
+      setIsSegmenting(false);
+      setSegmentingStatus("");
+    }
+  };
+
+  // Render composer onto offscreen canvas for export
+  const exportComposition = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 768;
+      canvas.height = 1024;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get 2D context"));
+        return;
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const layers = [
+        { id: "blouse", url: segmentedBlouse, settings: blouseLayer },
+        { id: "saree", url: segmentedSaree, settings: sareeLayer }
+      ].sort((a, b) => a.settings.zIndex - b.settings.zIndex);
+
+      let loadedCount = 0;
+      if (layers.length === 0) {
+        resolve(canvas.toDataURL("image/png"));
+        return;
+      }
+
+      layers.forEach((layer) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          ctx.save();
+
+          const w = (layer.settings.scale * canvas.width);
+          const aspectRatio = img.naturalHeight / img.naturalWidth;
+          const h = w * aspectRatio;
+
+          const x = (layer.settings.x / 100) * canvas.width;
+          const y = (layer.settings.y / 100) * canvas.height;
+
+          const centerX = x + w / 2;
+          const centerY = y + h / 2;
+
+          ctx.translate(centerX, centerY);
+          ctx.rotate((layer.settings.rotation * Math.PI) / 180);
+          ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          ctx.restore();
+
+          loadedCount++;
+          if (loadedCount === layers.length) {
+            resolve(canvas.toDataURL("image/png"));
+          }
+        };
+        img.onerror = () => {
+          reject(new Error(`Failed to load segmented image layer for composition`));
+        };
+        img.src = layer.url;
+      });
+    });
+  };
 
   // Dashboard Data Actions
   useEffect(() => {
@@ -281,41 +567,202 @@ export default function StudioPage() {
     }
   };
 
-  const handleGenerate = async () => {
-    const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
-    const mainDesignUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+  const isFormValidForGeneration = () => {
+    if (activeTab === "combine") {
+      return !!(segmentedSaree && segmentedBlouse && (!isCustomModel || combineModel));
+    } else if (activeTab === "video") {
+      return !!uploads["video_reference_image"];
+    } else {
+      const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+      const mainUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+      return !!mainUrl;
+    }
+  };
 
-    if (!mainDesignUrl) {
-      alert(t("Please upload your main design first!") || "Please upload your main design first!");
-      return;
+  const handleGenerate = async () => {
+    // 1. Perform validations first (before switching tab or starting generation)
+    if (activeTab === "combine") {
+      if (!segmentedSaree || !segmentedBlouse) {
+        alert(t("Please segment your saree and blouse first!") || "Please segment your saree and blouse first!");
+        return;
+      }
+      if (isCustomModel && !combineModel) {
+        alert(t("Please upload your model image first!") || "Please upload your model image first!");
+        return;
+      }
+      if (!useMockMode && balance < 1) {
+        alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
+        return;
+      }
+    } else if (activeTab === "video") {
+      if (!uploads["video_reference_image"]) {
+        alert(t("Please upload a reference image for video!") || "Please upload a reference image for video!");
+        return;
+      }
+      if (!useMockMode && balance < 1) {
+        alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
+        return;
+      }
+    } else {
+      const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+      const mainUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+
+      if (!mainUrl) {
+        alert(t("Please upload your main design first!") || "Please upload your main design first!");
+        return;
+      }
+      if (!useMockMode && balance < 1) {
+        alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
+        return;
+      }
     }
 
-    if (balance < 1) {
-      alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
-      return;
+    // 2. Switch tab and start generation
+    setRightTab("generate");
+    setIsGenerating(true);
+
+    let mainDesignUrl = "";
+    let finalPoseModelBg = null;
+    let actualAiPipeline = aiPipeline;
+
+    if (activeTab === "combine") {
+      try {
+        // 1. Export composition from composer canvas
+        const base64Composed = await exportComposition();
+        
+        // 2. Upload composed image to Supabase
+        const composedUrl = await uploadBase64ToSupabase(base64Composed, "multi_garment_composed");
+        if (!composedUrl) {
+          throw new Error("Failed to upload composed outfit to storage");
+        }
+        mainDesignUrl = composedUrl;
+
+        // 3. Set up the model image
+        if (isCustomModel) {
+          finalPoseModelBg = combineModel;
+        } else {
+          finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedCombinePose}.webp`;
+        }
+
+        actualAiPipeline = "multi_garment";
+      } catch (err: any) {
+        setGenerationError({
+          message: `Failed to compose and upload outfit: ${err.message}`,
+          code: "COMPOSE_FAILED"
+        });
+        setIsGenerating(false);
+        return;
+      }
+    } else if (activeTab === "image") {
+      const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+      const mainUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+
+      let secondUrl = "";
+      let comboType: "saree" | "lehenga" | "top_bottom" = "top_bottom";
+      let isMultiGarment = false;
+
+      if (generateFor === "saree" && uploads.saree_blouse_design) {
+        secondUrl = uploads.saree_blouse_design;
+        comboType = "saree";
+        isMultiGarment = true;
+      } else if (generateFor === "lehenga" && uploads.lehenga_choli_design) {
+        secondUrl = uploads.lehenga_choli_design;
+        comboType = "lehenga";
+        isMultiGarment = true;
+      } else {
+        const bottomKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`;
+        if (uploads[bottomKey]) {
+          secondUrl = uploads[bottomKey];
+          comboType = "top_bottom";
+          isMultiGarment = true;
+        } else if (generateFor.toLowerCase() === "women's dress" && uploads.dress_bottom_design) {
+          secondUrl = uploads.dress_bottom_design;
+          comboType = "top_bottom";
+          isMultiGarment = true;
+        }
+      }
+
+      if (isMultiGarment && mainUrl && secondUrl) {
+        try {
+          console.log("Multi-garment detected under Image tab. Auto-segmenting and composing...");
+          
+          const base64Composed = await autoComposeGarments(mainUrl, secondUrl, comboType);
+          const composedUrl = await uploadBase64ToSupabase(base64Composed, "auto_multi_garment");
+          if (!composedUrl) {
+            throw new Error("Failed to upload composed garment image");
+          }
+          mainDesignUrl = composedUrl;
+          actualAiPipeline = "multi_garment";
+
+          finalPoseModelBg = uploads["pose_model_bg"] || null;
+          if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+          }
+        } catch (err: any) {
+          console.error("Auto-composition failed:", err);
+          // Fallback: use the main image directly without segmentation/composition
+          console.warn("Falling back to single-garment mode with main design image.");
+          mainDesignUrl = mainUrl;
+          actualAiPipeline = aiPipeline; // revert to default pipeline
+          finalPoseModelBg = uploads["pose_model_bg"] || null;
+          if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+          }
+          setGenerationError({
+            message: `Multi-garment composition failed (${err.message}). Using main design only.`,
+            code: "COMPOSE_FALLBACK"
+          });
+        }
+      } else {
+        try {
+          mainDesignUrl = mainUrl;
+          finalPoseModelBg = uploads["pose_model_bg"] || null;
+          if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+          }
+        } catch (err: any) {
+          console.error("Single generation preprocessing error:", err);
+          setIsGenerating(false);
+          return;
+        }
+      }
+    } else if (activeTab === "video") {
+      // Video tab uses a dedicated upload key
+      mainDesignUrl = uploads["video_reference_image"] || "";
+      finalPoseModelBg = null;
+    } else {
+      const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+      mainDesignUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
+
+      try {
+        finalPoseModelBg = uploads["pose_model_bg"] || null;
+        if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+          finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+        }
+      } catch (err: any) {
+        console.error("Single generation preprocessing error:", err);
+        setIsGenerating(false);
+        return;
+      }
     }
 
     try {
-      setIsGenerating(true);
-
-      let finalPoseModelBg = uploads["pose_model_bg"] || null;
-      if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
-        finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
-      }
-
       const payload = {
-        generateFor,
+        generateFor: activeTab === "combine" ? "saree" : generateFor,
         photographyStyle,
         outputFormat,
         aspectRatio,
         resolution,
-        modelPose,
+        modelPose: activeTab === "combine" ? DEFAULT_POSES[selectedCombinePose - 1]?.label || "Front Standing" : modelPose,
         skinTone,
         backgroundStyle,
         sareeColourHint,
         original_image_url: mainDesignUrl,
         pose_model_bg: finalPoseModelBg,
         useMockMode: useMockMode,
+        aiPipeline: actualAiPipeline,
+        additional_designs: uploads,
+        catalogueOption: catalogueOption,
       };
 
       const res = await fetch("/api/generate", {
@@ -346,7 +793,9 @@ export default function StudioPage() {
       setRightTab("generate");
 
       // Optimistically deduct credit in local state
-      setBalance(prev => Math.max(0, prev - 1));
+      if (!useMockMode) {
+        setBalance(prev => Math.max(0, prev - 1));
+      }
 
       // Quietly refresh data
       fetchDashboardData();
@@ -768,6 +1217,35 @@ export default function StudioPage() {
                         <>
                           {/* Basic Model Parameters */}
                           <div className="space-y-4 pb-4 border-b border-gray-100 mb-4 mt-2">
+                            {/* AI Generation Pipeline Dropdown */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                                <Sparkles className="h-4 w-4 text-pink-500" />
+                                {t("AI Quality Pipeline")}
+                              </label>
+                              <div className="relative">
+                                <select
+                                  value={aiPipeline}
+                                  onChange={(e) => setAiPipeline(e.target.value)}
+                                  className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white"
+                                >
+                                  <option value="auto">{t("Auto (Standard Fallback Routing)")}</option>
+                                  <option value="hybrid">{t("Hybrid VTON + Gemini Enhance (Recommended)")}</option>
+                                  <option value="openrouter_gemini">{t("OpenRouter: Gemini 2.5 Flash Image")}</option>
+                                  <option value="openrouter_flux_pro">{t("OpenRouter: Flux 2 Pro")}</option>
+                                  <option value="openrouter_flux_flex">{t("OpenRouter: Flux 2 Flex")}</option>
+                                </select>
+                                <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 text-gray-500 pointer-events-none" />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {aiPipeline === "auto" && t("Automatically routes your request to get the best free and paid models.")}
+                                {aiPipeline === "hybrid" && t("IDM-VTON transfers the clothes first, then Gemini refines the model's face/background details.")}
+                                {aiPipeline === "openrouter_gemini" && t("Generates output using google/gemini-2.5-flash-image editing model.")}
+                                {aiPipeline === "openrouter_flux_pro" && t("Generates premium commercial fashion model output via FLUX.2 Pro.")}
+                                {aiPipeline === "openrouter_flux_flex" && t("Generates fast fashion model outputs via FLUX.2 Flex.")}
+                              </p>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                               {/* Model Pose Dropdown */}
                               <div className="space-y-2">
@@ -1454,304 +1932,137 @@ export default function StudioPage() {
           </div>
             ) : activeTab === "combine" ? (
               <div className="space-y-6">
-                {/* Step 1: Upload Model Images */}
+                {/* Step 1: Upload Garments */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
                       1
                     </span>
-                    <h2 className="text-base font-bold text-gray-900">{t("Upload Model Images")}</h2>
+                    <h2 className="text-base font-bold text-gray-900">{t("Upload Garments") || "Upload Garments"}</h2>
                   </div>
-                  <div className="space-y-4">
-                    <p className="text-xs text-gray-500">{t("Upload 2-3 model photos wearing different designs to combine into one image")}</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <UploadDesignBox
-                        label={t("Model Image 1") || "Model Image 1"}
-                        value={uploads["combine_model_image_1"] || ""}
-                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_1: url }))}
-                        placeholderText={t("Model Image 1") || "Model Image 1"}
-                        helperText={t("First model image") || "First model image"}
-                        heightClass="h-28"
-                      />
-                      <UploadDesignBox
-                        label={t("Model Image 2") || "Model Image 2"}
-                        value={uploads["combine_model_image_2"] || ""}
-                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_2: url }))}
-                        placeholderText={t("Model Image 2") || "Model Image 2"}
-                        helperText={t("Second model image") || "Second model image"}
-                        heightClass="h-28"
-                      />
-                      <UploadDesignBox
-                        label={t("Model Image 3") || "Model Image 3"}
-                        value={uploads["combine_model_image_3"] || ""}
-                        onChange={(url) => setUploads(prev => ({ ...prev, combine_model_image_3: url }))}
-                        placeholderText={t("Model Image 3 (Opt)") || "Model Image 3 (Opt)"}
-                        helperText={t("Third model image") || "Third model image"}
-                        heightClass="h-28"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 2: Background Image */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
-                      2
-                    </span>
-                    <h2 className="text-base font-bold text-gray-900">{t("Background Image")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></h2>
-                  </div>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
                     <UploadDesignBox
-                      label={t("Background Image") || "Background Image"}
-                      value={uploads["combine_background_image"] || ""}
-                      onChange={(url) => setUploads(prev => ({ ...prev, combine_background_image: url }))}
-                      placeholderText={t("Click to upload preferred background or drag & drop") || "Click to upload background"}
-                      helperText={t("Upload preferred background image.") || "Preferred background image"}
+                      label={t("Upload Saree") || "Upload Saree"}
+                      value={combineSaree}
+                      onChange={(url) => setCombineSaree(url)}
+                      placeholderText={t("Saree Image") || "Saree Image"}
+                      helperText={t("Main saree fabric/pattern") || "Main saree fabric"}
+                      heightClass="h-32"
+                    />
+                    <UploadDesignBox
+                      label={t("Upload Blouse") || "Upload Blouse"}
+                      value={combineBlouse}
+                      onChange={(url) => setCombineBlouse(url)}
+                      placeholderText={t("Blouse Design") || "Blouse Design"}
+                      helperText={t("Blouse design/pattern") || "Blouse design"}
                       heightClass="h-32"
                     />
                   </div>
                 </div>
 
-                {/* Step 3: Branding Details */}
-                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-                  <Accordion defaultValue={["step-3"]}>
-                    <AccordionItem value="step-3" className="border-0">
-                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
-                        <div className="flex items-center gap-2.5">
-                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
-                            3
-                          </span>
-                          <h2 className="text-base font-bold text-gray-900">{t("Branding Details")}</h2>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pb-4 px-4 pl-12">
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <UploadDesignBox
-                              label={t("Brand Logo") || "Brand Logo"}
-                              value={uploads["combine_brand_logo"] || ""}
-                              onChange={(url) => setUploads(prev => ({ ...prev, combine_brand_logo: url }))}
-                              placeholderText={t("Click to upload logo or drag & drop") || "Click to upload logo"}
-                              helperText={t("Upload brand logo watermark image.") || "Brand logo watermark"}
-                              heightClass="h-28"
-                            />
-                          </div>
-                          <label className="flex items-start gap-2 cursor-pointer group">
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
-                            />
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-gray-700 leading-tight group-hover:text-gray-900 transition-colors">
-                                {t("Add brand logo as center watermark")}
-                              </span>
-                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
-                                {t("Places a faint brand logo in the center of the image (requires brand logo upload).")}
-                              </span>
-                            </div>
-                          </label>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Brand Name")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <input 
-                              type="text"
-                              value={brandName}
-                              onChange={(e) => setBrandName(e.target.value)}
-                              placeholder={t("e.g. Royal Silks")}
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 transition-all hover:border-gray-300"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Design Number")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <input 
-                              type="text"
-                              value={designNumber}
-                              onChange={(e) => setDesignNumber(e.target.value)}
-                              placeholder={t("e.g. RS-2024-001")}
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 transition-all hover:border-gray-300"
-                            />
-                          </div>
+                {/* Step 2: Choose Model Pose */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
+                      2
+                    </span>
+                    <h2 className="text-base font-bold text-gray-900">{t("Choose Model Pose") || "Choose Model Pose"}</h2>
+                  </div>
+                  
+                  {/* Toggle Mode */}
+                  <div className="flex gap-2 p-1 bg-gray-100 rounded-lg max-w-xs">
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomModel(false)}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${!isCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                    >
+                      {t("Preset Poses") || "Preset Poses"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomModel(true)}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${isCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                    >
+                      {t("Custom Model") || "Custom Model"}
+                    </button>
+                  </div>
 
-                          {(brandName || designNumber) && (
-                            <div className="space-y-4 pt-2 border-t border-gray-50">
-                              <div className="space-y-2">
-                                <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
-                                <div className="flex items-center gap-4">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500">{t("Size:")}</span>
-                                    <div className="flex items-center border border-gray-200 rounded bg-white overflow-hidden h-7">
-                                      <input 
-                                        type="text" 
-                                        value={fontSize} 
-                                        readOnly
-                                        className="w-8 text-center text-[11px] font-bold text-gray-700 bg-transparent outline-none"
-                                      />
-                                      <span className="text-[10px] text-gray-400 mr-1">%</span>
-                                      <div className="flex flex-col border-l border-gray-100">
-                                        <button 
-                                          onClick={() => setFontSize(prev => Math.min(15, prev + 0.5))}
-                                          className="p-0.5 hover:bg-gray-50 text-gray-400 border-b border-gray-100 leading-[0]"
-                                        >
-                                          <ChevronUp className="h-2 w-2" />
-                                        </button>
-                                        <button 
-                                          onClick={() => setFontSize(prev => Math.max(0.5, prev - 0.5))}
-                                          className="p-0.5 hover:bg-gray-50 text-gray-400 leading-[0]"
-                                        >
-                                          <ChevronDown className="h-2 w-2" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <label className="flex items-center gap-1.5 cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isBold}
-                                      onChange={(e) => setIsBold(e.target.checked)}
-                                      className="rounded border-gray-300 text-pink-500 focus:ring-pink-500 w-3.5 h-3.5"
-                                    />
-                                    <span className="text-xs font-medium text-gray-700">{t("Bold")}</span>
-                                  </label>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-xs text-gray-500">{t("Color:")}</span>
-                                    <div className="flex gap-1.5 items-center">
-                                      <button 
-                                        onClick={() => setFontColor("dark")}
-                                        className={`w-[18px] h-[18px] rounded-full bg-black border-2 ${fontColor === "dark" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-transparent"}`}
-                                      />
-                                      <button 
-                                        onClick={() => setFontColor("white")}
-                                        className={`w-[18px] h-[18px] rounded-full bg-white border-2 ${fontColor === "white" ? "border-pink-500 ring-1 ring-pink-500 ring-offset-1" : "border-gray-200"}`}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <span className="text-sm font-semibold text-gray-700">{t("Text Position")}</span>
-                                <div className="grid grid-cols-2 gap-2 max-w-[240px]">
-                                  {["top_left", "top_right", "bottom_left", "bottom_right"].map((pos) => (
-                                    <button
-                                      key={pos}
-                                      onClick={() => setTextPosition(pos)}
-                                      className={`py-1.5 rounded text-[13px] font-medium border transition-colors ${
-                                        textPosition === pos 
-                                          ? "bg-pink-50 border-pink-300 text-pink-600" 
-                                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                                      }`}
-                                    >
-                                      {t(pos.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))}
-                                    </button>
-                                  ))}
-                                </div>
+                  {!isCustomModel ? (
+                    <div className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
+                      <div className="grid grid-cols-4 gap-2">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((poseNum) => {
+                          const isSelected = selectedCombinePose === poseNum;
+                          return (
+                            <div
+                              key={poseNum}
+                              onClick={() => setSelectedCombinePose(poseNum)}
+                              className={`relative aspect-[3/4] rounded-lg overflow-hidden cursor-pointer transition-all ${
+                                isSelected ? "ring-2 ring-pink-500 ring-offset-1" : "border border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <img
+                                src={`/poses/pose${poseNum}.webp`}
+                                alt={`Pose ${poseNum}`}
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-x-0 bottom-0 py-1 bg-black/60 flex justify-center z-10">
+                                <span className="text-white text-[10px] font-semibold">
+                                  Pose {poseNum}
+                                </span>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <UploadDesignBox
+                      label={t("Model Photo") || "Model Photo"}
+                      value={combineModel}
+                      onChange={(url) => setCombineModel(url)}
+                      placeholderText={t("Click to upload model photo") || "Upload model photo"}
+                      helperText={t("Front facing high-quality model photo") || "High-quality model photo"}
+                      heightClass="h-40"
+                    />
+                  )}
                 </div>
 
-                {/* Step 4: AI Instructions */}
-                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-                  <Accordion>
-                    <AccordionItem value="step-4" className="border-0">
-                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
-                        <div className="flex items-center gap-2.5">
-                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
-                            4
-                          </span>
-                          <h2 className="text-base font-bold text-gray-900">{t("AI Instructions")}</h2>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pb-4 px-4 pl-12">
-                        <div className="space-y-6 mt-2">
-                          <label className="flex items-start gap-2 cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={optimiseEcommerce}
-                              onChange={(e) => handleOptimiseEcommerceChange(e.target.checked)}
-                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
-                            />
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-gray-700 leading-tight">
-                                {t("Optimise for Ecommerce Upload")}
-                              </span>
-                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
-                                {t("Automatically sets 1K resolution, Portrait (3:4) aspect ratio, and JPEG format.")}
-                              </span>
-                            </div>
-                          </label>
-                          <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
-                            <span className="text-sm font-semibold text-gray-700">{t("Output Format")}</span>
-                            <div className="flex gap-2">
-                              <button
-                                disabled={optimiseEcommerce}
-                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
-                                  !optimiseEcommerce && outputFormat === "png" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600"
-                                } ${optimiseEcommerce ? "cursor-not-allowed grayscale" : "hover:bg-gray-50"}`}
-                              >
-                                {t("PNG")}
-                              </button>
-                              <button
-                                disabled={optimiseEcommerce}
-                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
-                                  optimiseEcommerce || outputFormat === "jpeg" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600"
-                                } ${optimiseEcommerce ? "cursor-not-allowed" : "hover:bg-gray-50"}`}
-                              >
-                                {t("JPEG")}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Edit / Style Prompt")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
-                            <textarea 
-                              rows={3}
-                              placeholder={t("e.g. Add 4 color transitions: mehendi (starting color), pista, firozi, and rani. Include...")}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400 resize-y"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Aspect Ratio")}</span>
-                            <div className={`relative ${optimiseEcommerce ? "ring-2 ring-pink-500/20 rounded-lg" : ""}`}>
-                              <select 
-                                value={aspectRatio}
-                                onChange={(e) => setAspectRatio(e.target.value)}
-                                disabled={optimiseEcommerce}
-                                className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${optimiseEcommerce ? "border-pink-500 cursor-not-allowed font-medium" : "border-gray-300"}`}
-                              >
-                                <option value="3:4 - Portrait">{t("3:4 - Portrait")}</option>
-                                <option value="4:3 - Landscape">{t("4:3 - Landscape")}</option>
-                                <option value="1:1 - Square">{t("1:1 - Square")}</option>
-                                <option value="2:3 - Tall Portrait (4:6, 6:9, Default)">{t("2:3 - Tall Portrait (4:6, 6:9, Default)")}</option>
-                                <option value="3:2 - Wide Landscape">{t("3:2 - Wide Landscape")}</option>
-                                <option value="9:16 - Phone/Stories">{t("9:16 - Phone/Stories")}</option>
-                                <option value="16:9 - Widescreen">{t("16:9 - Widescreen")}</option>
-                              </select>
-                              <ChevronDown className={`absolute right-3 top-2.5 h-4 w-4 pointer-events-none ${optimiseEcommerce ? "text-pink-500" : "text-gray-900"}`} strokeWidth={3} />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-sm font-semibold text-gray-700">{t("Resolution")}</span>
-                            <div className="relative">
-                              <select 
-                                value={resolution}
-                                onChange={(e) => setResolution(e.target.value)}
-                                disabled={optimiseEcommerce}
-                                className={`w-full appearance-none border rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${optimiseEcommerce ? "border-gray-300 cursor-not-allowed font-medium bg-gray-50/50" : "border-gray-300"}`}
-                              >
-                                <option value="1K">{t("1K")}</option>
-                                <option value="2K">{t("2K")}</option>
-                                <option value="4K">{t("4K")}</option>
-                              </select>
-                              <ChevronDown className="absolute right-3 top-2.5 h-4 w-4 text-gray-900 pointer-events-none" strokeWidth={3} />
-                            </div>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
+                {/* Step 3: Segment Backgrounds */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
+                      3
+                    </span>
+                    <h2 className="text-base font-bold text-gray-900">{t("Segment & Compose") || "Segment & Compose"}</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-normal">
+                    {t("We will isolate your Saree and Blouse from their backgrounds so you can overlay and drape them on the canvas.")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={segmentGarments}
+                    disabled={isSegmenting || !combineSaree || !combineBlouse}
+                    className="w-full h-11 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {isSegmenting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>{segmentingStatus || "Segmenting..."}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Scissors className="h-4 w-4" />
+                        <span>{t("Isolate & Segment Clothes") || "Isolate & Segment Clothes"}</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  {segmentedSaree && segmentedBlouse && (
+                    <div className="bg-green-50 text-green-700 rounded-xl px-4 py-3 text-xs font-semibold flex items-center gap-2 border border-green-100">
+                      <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      <span>{t("Garments segmented! Use the Outfit Composer workspace on the right to arrange them.")}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1784,7 +2095,7 @@ export default function StudioPage() {
           </div>
           <button
             onClick={handleGenerate}
-            disabled={isGenerating}
+            disabled={isGenerating || !isFormValidForGeneration()}
             className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-xl shadow-md text-sm font-bold transition-all hover:scale-[1.02] active:scale-95 disabled:scale-100 disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isGenerating ? (
@@ -2066,6 +2377,210 @@ export default function StudioPage() {
                           )}
                         </div>
                       </div>
+                    </div>
+                  );
+                }
+
+                // If activeTab === "combine" AND we have segmented garments, show the Outfit Composer
+                if (activeTab === "combine" && segmentedSaree && segmentedBlouse) {
+                  return (
+                    <div className="mb-6">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                          <Sliders className="h-4 w-4 text-pink-500" />
+                          {t("Outfit Composer") || "Outfit Composer"}
+                        </h3>
+                        <button
+                          onClick={() => {
+                            // Auto arrange defaults
+                            setBlouseLayer({ x: 25, y: 12, scale: 0.5, rotation: 0, zIndex: 1 });
+                            setSareeLayer({ x: 10, y: 35, scale: 0.8, rotation: 0, zIndex: 2 });
+                          }}
+                          className="text-xs font-bold text-pink-600 hover:text-pink-800 transition-colors flex items-center gap-1"
+                        >
+                          <RefreshCcw className="h-3 w-3" />
+                          {t("Auto-Arrange") || "Auto-Arrange"}
+                        </button>
+                      </div>
+
+                      {/* Canvas Container */}
+                      <div className="flex justify-center mb-6">
+                        <div className="relative aspect-[3/4] w-[320px] bg-gradient-to-b from-gray-50 to-white rounded-xl border border-gray-200 overflow-hidden shadow-md">
+                          {/* Blouse Image */}
+                          <img
+                            src={segmentedBlouse}
+                            style={{
+                              position: "absolute",
+                              left: `${blouseLayer.x}%`,
+                              top: `${blouseLayer.y}%`,
+                              width: `${blouseLayer.scale * 100}%`,
+                              transform: `rotate(${blouseLayer.rotation}deg)`,
+                              zIndex: blouseLayer.zIndex,
+                            }}
+                            alt="Segmented Blouse"
+                            className={`cursor-pointer transition-all duration-75 select-none ${
+                              selectedLayer === "blouse" ? "ring-2 ring-pink-500 ring-offset-2 rounded" : ""
+                            }`}
+                            onClick={() => setSelectedLayer("blouse")}
+                          />
+
+                          {/* Saree Image */}
+                          <img
+                            src={segmentedSaree}
+                            style={{
+                              position: "absolute",
+                              left: `${sareeLayer.x}%`,
+                              top: `${sareeLayer.y}%`,
+                              width: `${sareeLayer.scale * 100}%`,
+                              transform: `rotate(${sareeLayer.rotation}deg)`,
+                              zIndex: sareeLayer.zIndex,
+                            }}
+                            alt="Segmented Saree"
+                            className={`cursor-pointer transition-all duration-75 select-none ${
+                              selectedLayer === "saree" ? "ring-2 ring-pink-500 ring-offset-2 rounded" : ""
+                            }`}
+                            onClick={() => setSelectedLayer("saree")}
+                          />
+                          
+                          {/* Selected Indicator Badge */}
+                          <div className="absolute top-3 left-3 bg-pink-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm select-none z-30">
+                            {t("Editing:")} {selectedLayer.toUpperCase()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Controls Sliders */}
+                      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-4">
+                        {/* Selector Tab */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setSelectedLayer("saree")}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
+                              selectedLayer === "saree"
+                                ? "bg-white border-pink-200 text-pink-600 shadow-sm"
+                                : "bg-transparent border-transparent text-gray-500 hover:text-gray-700"
+                            }`}
+                          >
+                            {t("Saree Layer")}
+                          </button>
+                          <button
+                            onClick={() => setSelectedLayer("blouse")}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
+                              selectedLayer === "blouse"
+                                ? "bg-white border-pink-200 text-pink-600 shadow-sm"
+                                : "bg-transparent border-transparent text-gray-500 hover:text-gray-700"
+                            }`}
+                          >
+                            {t("Blouse Layer")}
+                          </button>
+                        </div>
+
+                        {/* Sliders */}
+                        {(() => {
+                          const layer = selectedLayer === "saree" ? sareeLayer : blouseLayer;
+                          const setLayer = selectedLayer === "saree" ? setSareeLayer : setBlouseLayer;
+                          
+                          return (
+                            <div className="space-y-3.5">
+                              {/* Position X */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600">
+                                  <span>{t("Position X")}</span>
+                                  <span>{layer.x}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="150"
+                                  value={layer.x}
+                                  onChange={(e) => setLayer(prev => ({ ...prev, x: parseInt(e.target.value) }))}
+                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                                />
+                              </div>
+
+                              {/* Position Y */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600">
+                                  <span>{t("Position Y")}</span>
+                                  <span>{layer.y}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="150"
+                                  value={layer.y}
+                                  onChange={(e) => setLayer(prev => ({ ...prev, y: parseInt(e.target.value) }))}
+                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                                />
+                              </div>
+
+                              {/* Scale */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600">
+                                  <span>{t("Scale (Size)")}</span>
+                                  <span>{Math.round(layer.scale * 100)}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="10"
+                                  max="300"
+                                  value={Math.round(layer.scale * 100)}
+                                  onChange={(e) => setLayer(prev => ({ ...prev, scale: parseFloat(e.target.value) / 100 }))}
+                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                                />
+                              </div>
+
+                              {/* Rotation */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600">
+                                  <span>{t("Rotation")}</span>
+                                  <span>{layer.rotation}°</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="-180"
+                                  max="180"
+                                  value={layer.rotation}
+                                  onChange={(e) => setLayer(prev => ({ ...prev, rotation: parseInt(e.target.value) }))}
+                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                                />
+                              </div>
+
+                              {/* Layer Order */}
+                              <div className="flex justify-between items-center pt-2 border-t border-gray-200/60">
+                                <span className="text-xs font-semibold text-gray-600">{t("Layer Order:")}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (selectedLayer === "saree") {
+                                      setSareeLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
+                                      setBlouseLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
+                                    } else {
+                                      setBlouseLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
+                                      setSareeLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
+                                    }
+                                  }}
+                                  className="px-3 py-1 bg-white hover:bg-gray-100 border border-gray-200 text-xs font-bold text-gray-700 rounded-md transition-colors shadow-sm"
+                                >
+                                  {selectedLayer === "saree"
+                                    ? sareeLayer.zIndex === 2 ? t("Send Saree to Back") : t("Bring Saree to Front")
+                                    : blouseLayer.zIndex === 2 ? t("Send Blouse to Back") : t("Bring Blouse to Front")}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Main Trigger Call-to-action */}
+                      <button
+                        onClick={handleGenerate}
+                        disabled={isGenerating || !isFormValidForGeneration()}
+                        className="w-full mt-4 h-11 bg-pink-500 hover:bg-pink-600 text-white rounded-lg text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {t("Generate Multi-Garment Try-On") || "Generate Try-On"}
+                      </button>
                     </div>
                   );
                 }

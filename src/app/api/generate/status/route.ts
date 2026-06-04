@@ -1,5 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { enhanceImageWithGemini, restoreFaceWithCodeformer } from "@/utils/ai";
+
+export const dynamic = "force-dynamic";
 
 // Helper to upload image to Supabase Storage
 async function uploadToStorage(supabase: any, imageUrl: string, userId: string, genId: string) {
@@ -144,7 +147,88 @@ export async function GET(request: Request) {
         }
 
         // Upload to user's storage bucket
-        const publicUrl = await uploadToStorage(supabase, outputUrl, gen.user_id, gen.id);
+        let publicUrl = await uploadToStorage(supabase, outputUrl, gen.user_id, gen.id);
+
+        const aiPipeline = gen.model_settings?.aiPipeline;
+
+        // Run CodeFormer face restoration for multi-garment pipeline
+        if (aiPipeline === "multi_garment") {
+          try {
+            console.log("VTON succeeded. Triggering face restoration with CodeFormer...");
+            const restoredUrl = await restoreFaceWithCodeformer(replicateToken, publicUrl);
+            if (restoredUrl) {
+              const uploadUrl = await uploadToStorage(supabase, restoredUrl, gen.user_id, `${gen.id}_restored`);
+              publicUrl = uploadUrl;
+              console.log("Async CodeFormer face restoration succeeded! Public URL:", publicUrl);
+            }
+          } catch (err) {
+            console.error("Async CodeFormer face restoration failed, using base VTON output:", err);
+          }
+        }
+
+        // Check if hybrid enhancement is requested (or needed because of additional uploaded clothes in auto mode)
+        const additionalDesigns = gen.model_settings?.additional_designs || {};
+        const generateFor = gen.model_settings?.generateFor || "saree";
+
+        const mainDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
+        const hasAdditionalClothing = additionalDesigns 
+          ? Object.entries(additionalDesigns).some(([key, val]) => 
+              val && typeof val === "string" && val.startsWith("http") && key !== mainDesignKey
+            )
+          : false;
+        const shouldEnhance = aiPipeline === "hybrid" || (aiPipeline === "auto" && hasAdditionalClothing);
+
+        const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+
+        if (shouldEnhance && (openRouterApiKey || geminiApiKey)) {
+          try {
+            console.log("VTON succeeded. Triggering Hybrid Step 2 enhancement...");
+            const responseVton = await fetch(publicUrl);
+            const arrayBufferVton = await responseVton.arrayBuffer();
+            const base64Vton = Buffer.from(arrayBufferVton).toString("base64");
+            const mimeTypeVton = responseVton.headers.get("content-type") || "image/png";
+
+            const additionalUrls = additionalDesigns
+              ? Object.entries(additionalDesigns)
+                  .filter(([key, val]) => val && typeof val === "string" && val.startsWith("http") && key !== mainDesignKey)
+                  .map(([_, val]) => val as string)
+              : [];
+
+            const { base64Data: enhancedBase64, mimeType: enhancedMime } = await enhanceImageWithGemini({
+              base64Image: base64Vton,
+              mimeType: mimeTypeVton,
+              prompt: gen.prompt,
+              openRouterApiKey,
+              geminiApiKey,
+              generateFor: generateFor,
+              additionalImageUrls: additionalUrls
+            });
+
+            // Upload the enhanced image to storage
+            const buffer = Buffer.from(enhancedBase64, "base64");
+            const filePath = `${gen.user_id}/${gen.id}_enhanced.png`;
+
+            const { error: uploadError } = await supabase.storage
+              .from("designs")
+              .upload(filePath, buffer, {
+                contentType: enhancedMime,
+                upsert: true,
+              });
+
+            if (!uploadError) {
+              const { data: { publicUrl: enhancedUrl } } = supabase.storage
+                .from("designs")
+                .getPublicUrl(filePath);
+              publicUrl = enhancedUrl;
+              console.log("Async Hybrid Enhancement succeeded!");
+            } else {
+              console.error("Async Hybrid upload error:", uploadError);
+            }
+          } catch (enhanceErr) {
+            console.error("Async Hybrid Enhancement failed, keeping base Replicate image:", enhanceErr);
+          }
+        }
 
         const { data: updatedGen, error: updateErr } = await supabase
           .from("generations")
