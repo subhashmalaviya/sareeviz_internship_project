@@ -189,23 +189,32 @@ export default function StudioPage() {
     secondUrl: string,
     type: "saree" | "lehenga" | "top_bottom"
   ): Promise<string> => {
-    // 1. Segment both garments
-    const segmentGarment = async (url: string, name: string) => {
-      const res = await fetch("/api/segment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: url })
-      });
-      if (!res.ok) {
-        throw new Error(`Segmentation failed for ${name}: ${res.statusText}`);
+    // 1. Try to segment each garment, fall back to raw image URL if segmentation fails
+    const segmentGarment = async (url: string, name: string): Promise<string> => {
+      try {
+        const res = await fetch("/api/segment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: url })
+        });
+        if (!res.ok) {
+          console.warn(`Segmentation failed for ${name}: ${res.statusText}. Using raw image.`);
+          return url; // fallback to raw image
+        }
+        const data = await res.json();
+        if (data.error) {
+          console.warn(`Segmentation error for ${name}: ${data.error}. Using raw image.`);
+          return url; // fallback to raw image
+        }
+        return data.segmentedUrl;
+      } catch (err: any) {
+        console.warn(`Segmentation unavailable for ${name}: ${err.message}. Using raw image.`);
+        return url; // fallback to raw image
       }
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      return data.segmentedUrl;
     };
 
-    const mainSegmented = await segmentGarment(mainUrl, "main design");
-    const secondSegmented = await segmentGarment(secondUrl, "secondary design");
+    const mainProcessed = await segmentGarment(mainUrl, "main design");
+    const secondProcessed = await segmentGarment(secondUrl, "secondary design");
 
     // 2. Composite onto canvas
     return new Promise((resolve, reject) => {
@@ -294,8 +303,8 @@ export default function StudioPage() {
       img2.onerror = () => reject(new Error("Failed to load secondary garment image"));
 
       // Start loading
-      img1.src = mainSegmented;
-      img2.src = secondSegmented;
+      img1.src = mainProcessed;
+      img2.src = secondProcessed;
     });
   };
 
@@ -700,18 +709,12 @@ export default function StudioPage() {
           }
         } catch (err: any) {
           console.error("Auto-composition failed:", err);
-          // Fallback: use the main image directly without segmentation/composition
-          console.warn("Falling back to single-garment mode with main design image.");
-          mainDesignUrl = mainUrl;
-          actualAiPipeline = aiPipeline; // revert to default pipeline
-          finalPoseModelBg = uploads["pose_model_bg"] || null;
-          if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
-            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
-          }
           setGenerationError({
-            message: `Multi-garment composition failed (${err.message}). Using main design only.`,
-            code: "COMPOSE_FALLBACK"
+            message: `Failed to compose garments: ${err.message}`,
+            code: "COMPOSE_FAILED"
           });
+          setIsGenerating(false);
+          return;
         }
       } else {
         try {
