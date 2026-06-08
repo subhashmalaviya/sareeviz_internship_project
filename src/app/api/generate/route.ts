@@ -111,7 +111,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const garmentDescription = `${sareeColourHint || "beautiful"} ${generateFor || "saree"}`;
+    let garmentDescription = `${sareeColourHint || "beautiful"} ${generateFor || "saree"}`;
+    if (additional_designs) {
+      if (additional_designs.saree_blouse_design) {
+        garmentDescription += " and matching blouse";
+      }
+      if (additional_designs.lehenga_choli_design) {
+        garmentDescription += " and matching choli";
+      }
+      const bottomDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`;
+      if (additional_designs[bottomDesignKey] || additional_designs.dress_bottom_design) {
+        garmentDescription += " and matching bottom wear";
+      }
+    }
 
     let additionalPromptDetails = "";
     if (additional_designs) {
