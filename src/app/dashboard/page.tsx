@@ -270,24 +270,24 @@ export default function StudioPage() {
               // type === "top_bottom"
               // img1 is Top (Kurti, Kurta, etc.), img2 is Bottom (pants, skirt, etc.)
               
-              // Top: width = 60%, top y = 15%
-              ctx.save();
-              const tWidth = 0.6 * canvas.width;
-              const tAspect = img1.naturalHeight / img1.naturalWidth;
-              const tHeight = tWidth * tAspect;
-              const tX = (canvas.width - tWidth) / 2;
-              const tY = 0.15 * canvas.height;
-              ctx.drawImage(img1, tX, tY, tWidth, tHeight);
-              ctx.restore();
-
-              // Bottom: width = 55%, top y = 50%
+              // Bottom (Pants/Skirt) drawn FIRST so Top (Kurta/Dress) overlaps it properly
               ctx.save();
               const bWidth = 0.55 * canvas.width;
               const bAspect = img2.naturalHeight / img2.naturalWidth;
               const bHeight = bWidth * bAspect;
               const bX = (canvas.width - bWidth) / 2;
-              const bY = 0.50 * canvas.height;
+              const bY = 0.45 * canvas.height;
               ctx.drawImage(img2, bX, bY, bWidth, bHeight);
+              ctx.restore();
+
+              // Top (Kurta/Kurti) drawn SECOND
+              ctx.save();
+              const tWidth = 0.6 * canvas.width;
+              const tAspect = img1.naturalHeight / img1.naturalWidth;
+              const tHeight = tWidth * tAspect;
+              const tX = (canvas.width - tWidth) / 2;
+              const tY = 0.10 * canvas.height;
+              ctx.drawImage(img1, tX, tY, tWidth, tHeight);
               ctx.restore();
             }
             resolve(canvas.toDataURL("image/png"));
@@ -705,7 +705,10 @@ export default function StudioPage() {
 
           finalPoseModelBg = uploads["pose_model_bg"] || null;
           if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
-            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+            const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
+            const posePrefix = isMaleCategory ? "male_pose" : "pose";
+            const poseExt = isMaleCategory ? "png" : "webp";
+            finalPoseModelBg = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
           }
         } catch (err: any) {
           console.error("Auto-composition failed:", err);
@@ -721,7 +724,10 @@ export default function StudioPage() {
           mainDesignUrl = mainUrl;
           finalPoseModelBg = uploads["pose_model_bg"] || null;
           if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
-            finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+            const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
+            const posePrefix = isMaleCategory ? "male_pose" : "pose";
+            const poseExt = isMaleCategory ? "png" : "webp";
+            finalPoseModelBg = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
           }
         } catch (err: any) {
           console.error("Single generation preprocessing error:", err);
@@ -1487,7 +1493,7 @@ export default function StudioPage() {
                                                 }`}
                                               >
                                                 <img 
-                                                  src={`/poses/pose${poseNum}.webp`} 
+                                                  src={`/poses/${generateFor && ["man's kurta", "men's dress", "men's innerwear"].includes(generateFor.toLowerCase().trim()) ? "male_pose" : "pose"}${poseNum}.${generateFor && ["man's kurta", "men's dress", "men's innerwear"].includes(generateFor.toLowerCase().trim()) ? "png" : "webp"}`} 
                                                   alt={`Pose ${poseNum}`} 
                                                   className="absolute inset-0 w-full h-full object-cover"
                                                 />
