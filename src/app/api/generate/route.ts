@@ -121,7 +121,7 @@ export async function POST(request: Request) {
       }
       const bottomDesignKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_bottom_design`;
       if (additional_designs[bottomDesignKey] || additional_designs.dress_bottom_design) {
-        garmentDescription += " and matching bottom wear";
+        garmentDescription = `beautiful full body outfit with ${generateFor} and matching bottom wear`;
       }
     }
 
@@ -282,20 +282,45 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
+    // ─── RESOLVE POSE REFERENCE IMAGE ───
+    const poseMapping: Record<string, number> = {
+      "Front Standing": 1, "Left Profile": 2, "Back View": 3,
+      "Leaning on Wall": 4, "Seated": 5, "Walking": 6,
+      "Close-up Portrait": 7, "Right Profile": 8,
+    };
+    const poseNum = poseMapping[modelPose] || 1;
+    const isMaleCategoryForPose = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
+    const posePrefix = isMaleCategoryForPose ? "male_pose" : "pose";
+    const poseExt = isMaleCategoryForPose ? "png" : "webp";
+    
+    const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/${posePrefix}${poseNum}.${poseExt}`;
+    let humanImgUrl = pose_model_bg || defaultHumanImgUrl;
+
+    if (humanImgUrl.startsWith("/")) {
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(process.cwd(), "public", humanImgUrl);
+        const buffer = fs.readFileSync(filePath);
+        const base64Data = buffer.toString("base64");
+        const extType = humanImgUrl.endsWith(".png") ? "image/png" : "image/webp";
+        const tempId = `temp_pose_${Date.now()}`;
+        const publicUrl = await uploadBase64ToStorage(supabase, base64Data, extType, user.id, tempId);
+        if (publicUrl) {
+          humanImgUrl = publicUrl;
+          console.log("Uploaded local pose image to Supabase for VTON:", humanImgUrl);
+        }
+      } catch (e) {
+        console.error("Failed to upload local pose image:", e);
+        humanImgUrl = defaultHumanImgUrl;
+      }
+    }
+
     // ─── STRATEGY KAGGLE: Custom IDM-VTON Pipeline (Primary Free High-Fidelity) ───
     const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
     if (kaggleVtonUrl && !useMockMode) {
       try {
         console.log("Attempting Custom Kaggle IDM-VTON API generation...");
-
-        const poseMapping: Record<string, number> = {
-          "Front Standing": 1, "Left Profile": 2, "Back View": 3,
-          "Leaning on Wall": 4, "Seated": 5, "Walking": 6,
-          "Close-up Portrait": 7, "Right Profile": 8,
-        };
-        const poseNum = poseMapping[modelPose] || 1;
-        const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
-        const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
         const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
         const app = await Client.connect(kaggleVtonUrl, hfToken ? { token: hfToken } : {});
@@ -350,15 +375,6 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     if (generationStatus !== "done" && !useMockMode) {
       try {
         console.log("Attempting Kwai-Kolors Virtual Try-On API generation...");
-        
-        const poseMapping: Record<string, number> = {
-          "Front Standing": 1, "Left Profile": 2, "Back View": 3,
-          "Leaning on Wall": 4, "Seated": 5, "Walking": 6,
-          "Close-up Portrait": 7, "Right Profile": 8,
-        };
-        const poseNum = poseMapping[modelPose] || 1;
-        const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
-        const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
 
         const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
         const app = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { token: hfToken } : {});
@@ -808,23 +824,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
         try {
           console.log("Falling back to Replicate API...");
 
-          const poseMapping: Record<string, number> = {
-            "Front Standing": 1,
-            "Left Profile": 2,
-            "Back View": 3,
-            "Leaning on Wall": 4,
-            "Seated": 5,
-            "Walking": 6,
-            "Close-up Portrait": 7,
-            "Right Profile": 8,
-          };
-          const poseNum = poseMapping[modelPose] || 1;
-          const defaultHumanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${poseNum}.webp`;
-          const humanImgUrl = pose_model_bg || defaultHumanImgUrl;
-
           const getVtonCategory = (cat: string): string => {
             const normalized = (cat || "").toLowerCase().trim();
-            if (normalized.includes("saree") || normalized.includes("lehenga") || normalized.includes("suit") || normalized.includes("dress")) {
+            if (normalized.includes("saree") || normalized.includes("lehenga") || normalized.includes("suit") || normalized.includes("dress") || normalized.includes("kurta") || normalized.includes("kurti")) {
               return "dresses";
             }
             if (normalized.includes("bottom") || normalized.includes("skirt") || normalized.includes("pants") || normalized.includes("salwar")) {
@@ -918,71 +920,14 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
-    // ─── STRATEGY 2.5: Pollinations AI FLUX (Free Fallback) ───
-    if (generationStatus !== "done" && !useMockMode) {
-      try {
-        console.log("Attempting fallback Pollinations AI FLUX generation...");
-        let width = 1024;
-        let height = 1024;
-        const cleanAspectRatio = aspectRatio ? aspectRatio.split(" ")[0].trim() : "1:1";
-        
-        if (cleanAspectRatio === "9:16") {
-          width = 768;
-          height = 1344;
-        } else if (cleanAspectRatio === "16:9") {
-          width = 1344;
-          height = 768;
-        } else if (cleanAspectRatio === "4:3") {
-          width = 1024;
-          height = 768;
-        } else if (cleanAspectRatio === "3:4") {
-          width = 768;
-          height = 1024;
-        } else if (cleanAspectRatio === "4:5") {
-          width = 896;
-          height = 1152;
-        }
-
-        const encodedPrompt = encodeURIComponent(prompt);
-        const seed = Math.floor(Math.random() * 1000000);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=${width}&height=${height}&seed=${seed}&nologo=true`;
-
-        const pollinationsRes = await fetch(pollinationsUrl);
-        if (pollinationsRes.ok) {
-          const arrayBuffer = await pollinationsRes.arrayBuffer();
-          const base64Data = Buffer.from(arrayBuffer).toString("base64");
-          const tempId = `pollinations_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-          const publicUrl = await uploadBase64ToStorage(
-            supabase,
-            base64Data,
-            "image/png",
-            user.id,
-            tempId
-          );
-
-          if (publicUrl) {
-            generatedImageUrl = publicUrl;
-            generationStatus = "done";
-            generationProvider = "pollinations";
-            console.log("Pollinations AI fallback generation succeeded!");
-          } else {
-            pollinationsErrorMsg = "Failed to upload Pollinations image to storage.";
-          }
-        } else {
-          pollinationsErrorMsg = `Pollinations AI HTTP error ${pollinationsRes.status}`;
-        }
-      } catch (err: any) {
-        console.error("Pollinations AI fallback error:", err?.message || err);
-        pollinationsErrorMsg = err?.message || String(err);
-      }
-    }
-
     // ─── STRATEGY 3: Mock Mode / Error Fallback ───
     if (generationStatus !== "done" && generationStatus !== "processing") {
       // If keys are configured but failed, and we did NOT request mock mode, return errors instead of running silent mock mode
-      if (!useMockMode && (togetherApiKey || huggingfaceApiKey || geminiApiKey || process.env.REPLICATE_API_TOKEN || pollinationsErrorMsg)) {
+      if (!useMockMode && (togetherApiKey || huggingfaceApiKey || geminiApiKey || process.env.REPLICATE_API_TOKEN || kaggleErrorMsg || openrouterErrorMsg)) {
         let errorDetails: string[] = [];
+        if (openrouterErrorMsg) {
+          errorDetails.push(`OpenRouter: ${openrouterErrorMsg}`);
+        }
         if (togetherApiKey && togetherErrorMsg) {
           let cleanTogether = togetherErrorMsg;
           try {
