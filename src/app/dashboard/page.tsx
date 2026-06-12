@@ -434,9 +434,10 @@ export default function StudioPage() {
     fetchDashboardData();
   }, []);
 
-  // Supabase Realtime subscription for generation updates
+  // Supabase Realtime subscription for generation and credit updates
   useEffect(() => {
     let activeChannel: any;
+    let creditsChannel: any;
     let isMounted = true;
 
     const setupRealtime = async () => {
@@ -471,6 +472,26 @@ export default function StudioPage() {
           }
         )
         .subscribe();
+
+      creditsChannel = supabase
+        .channel(`credits-realtime-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "credits",
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log("Realtime credit update received:", payload);
+            const newPayload = payload.new as any;
+            if (newPayload && typeof newPayload.balance === "number") {
+              setBalance(newPayload.balance);
+            }
+          }
+        )
+        .subscribe();
     };
 
     setupRealtime();
@@ -479,6 +500,9 @@ export default function StudioPage() {
       isMounted = false;
       if (activeChannel) {
         supabase.removeChannel(activeChannel);
+      }
+      if (creditsChannel) {
+        supabase.removeChannel(creditsChannel);
       }
     };
   }, []);
