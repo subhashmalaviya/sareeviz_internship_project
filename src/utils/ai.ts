@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import sharp from "sharp";
 
 // Helper to fetch an image URL and convert to base64
 export async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -270,6 +271,86 @@ export async function restoreFaceWithCodeformer(replicateToken: string, imageUrl
   } catch (err) {
     console.error("CodeFormer error:", err);
     return null;
+  }
+}
+
+// Helper to resize, crop and format image buffer using sharp
+export async function processImageBuffer(
+  buffer: Buffer,
+  outputFormat: string = "png",
+  resolution: string = "1K",
+  aspectRatio?: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  try {
+    let image = sharp(buffer);
+    const metadata = await image.metadata();
+
+    let targetWidth: number | undefined;
+    let targetHeight: number | undefined;
+
+    // Resolution mapping: "1K" -> max 1024px, "2K" -> max 2048px, "4K" -> max 4096px
+    let targetMaxDimension = 1024;
+    if (resolution === "2K") {
+      targetMaxDimension = 2048;
+    } else if (resolution === "4K") {
+      targetMaxDimension = 4096;
+    }
+
+    const currentWidth = metadata.width || 1024;
+    const currentHeight = metadata.height || 1024;
+
+    // Aspect ratio parsing (e.g. "3:4 - Portrait", "1:1 - Square")
+    const ratioMatch = aspectRatio ? aspectRatio.match(/^(\d+):(\d+)/) : null;
+    const targetRatio = ratioMatch ? parseInt(ratioMatch[1]) / parseInt(ratioMatch[2]) : null;
+
+    if (targetRatio) {
+      if (targetRatio > 1) {
+        // Landscape orientation
+        targetWidth = targetMaxDimension;
+        targetHeight = Math.round(targetMaxDimension / targetRatio);
+      } else {
+        // Portrait or Square orientation
+        targetHeight = targetMaxDimension;
+        targetWidth = Math.round(targetMaxDimension * targetRatio);
+      }
+      image = image.resize(targetWidth, targetHeight, {
+        fit: "cover",
+        position: "center",
+      });
+    } else {
+      // Resize maintaining original aspect ratio
+      if (currentWidth > currentHeight) {
+        if (currentWidth > targetMaxDimension) {
+          targetWidth = targetMaxDimension;
+          targetHeight = Math.round((currentHeight * targetMaxDimension) / currentWidth);
+        }
+      } else {
+        if (currentHeight > targetMaxDimension) {
+          targetHeight = targetMaxDimension;
+          targetWidth = Math.round((currentWidth * targetMaxDimension) / currentHeight);
+        }
+      }
+      if (targetWidth && targetHeight) {
+        image = image.resize(targetWidth, targetHeight);
+      }
+    }
+
+    const format = (outputFormat || "").toLowerCase().trim();
+    let finalMimeType = "image/png";
+    if (format === "jpeg" || format === "jpg") {
+      image = image.jpeg({ quality: 90 });
+      finalMimeType = "image/jpeg";
+    } else {
+      image = image.png({ compressionLevel: 8 });
+      finalMimeType = "image/png";
+    }
+
+    const processedBuffer = await image.toBuffer();
+    return { buffer: processedBuffer, mimeType: finalMimeType };
+  } catch (error) {
+    console.error("Image processing with sharp failed, using original:", error);
+    const format = (outputFormat || "").toLowerCase().trim();
+    return { buffer, mimeType: (format === "jpeg" || format === "jpg") ? "image/jpeg" : "image/png" };
   }
 }
 

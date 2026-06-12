@@ -1,22 +1,39 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-import { enhanceImageWithGemini, restoreFaceWithCodeformer } from "@/utils/ai";
+import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
 
 export const dynamic = "force-dynamic";
 
 // Helper to upload image to Supabase Storage
-async function uploadToStorage(supabase: any, imageUrl: string, userId: string, genId: string) {
+async function uploadToStorage(
+  supabase: any,
+  imageUrl: string,
+  userId: string,
+  genId: string,
+  outputFormat?: string,
+  resolution?: string,
+  aspectRatio?: string
+) {
   try {
     const res = await fetch(imageUrl);
     if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
     
-    const arrayBuffer = await res.arrayBuffer();
-    const filePath = `${userId}/${genId}.png`;
+    let buffer: any = Buffer.from(await res.arrayBuffer());
+    let finalMimeType = res.headers.get("content-type") || "image/png";
+
+    if (outputFormat || resolution || aspectRatio) {
+      const processed = await processImageBuffer(buffer, outputFormat, resolution, aspectRatio);
+      buffer = processed.buffer;
+      finalMimeType = processed.mimeType;
+    }
+
+    const ext = finalMimeType === "image/png" ? "png" : "jpg";
+    const filePath = `${userId}/${genId}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("designs")
-      .upload(filePath, arrayBuffer, {
-        contentType: "image/png",
+      .upload(filePath, buffer, {
+        contentType: finalMimeType,
         upsert: true,
       });
 
@@ -147,7 +164,7 @@ export async function GET(request: Request) {
         }
 
         // Upload to user's storage bucket
-        let publicUrl = await uploadToStorage(supabase, outputUrl, gen.user_id, gen.id);
+        let publicUrl = await uploadToStorage(supabase, outputUrl, gen.user_id, gen.id, gen.model_settings?.outputFormat, gen.model_settings?.resolution, gen.model_settings?.aspectRatio);
 
         const aiPipeline = gen.model_settings?.aiPipeline;
 
@@ -157,7 +174,7 @@ export async function GET(request: Request) {
             console.log("VTON succeeded. Triggering face restoration with CodeFormer...");
             const restoredUrl = await restoreFaceWithCodeformer(replicateToken, publicUrl);
             if (restoredUrl) {
-              const uploadUrl = await uploadToStorage(supabase, restoredUrl, gen.user_id, `${gen.id}_restored`);
+              const uploadUrl = await uploadToStorage(supabase, restoredUrl, gen.user_id, `${gen.id}_restored`, gen.model_settings?.outputFormat, gen.model_settings?.resolution, gen.model_settings?.aspectRatio);
               publicUrl = uploadUrl;
               console.log("Async CodeFormer face restoration succeeded! Public URL:", publicUrl);
             }
@@ -206,13 +223,22 @@ export async function GET(request: Request) {
             });
 
             // Upload the enhanced image to storage
-            const buffer = Buffer.from(enhancedBase64, "base64");
-            const filePath = `${gen.user_id}/${gen.id}_enhanced.png`;
+            let buffer: any = Buffer.from(enhancedBase64, "base64");
+            let finalMime = enhancedMime;
+
+            if (gen.model_settings?.outputFormat || gen.model_settings?.resolution || gen.model_settings?.aspectRatio) {
+              const processed = await processImageBuffer(buffer, gen.model_settings.outputFormat, gen.model_settings.resolution, gen.model_settings.aspectRatio);
+              buffer = processed.buffer;
+              finalMime = processed.mimeType;
+            }
+
+            const ext = finalMime === "image/png" ? "png" : "jpg";
+            const filePath = `${gen.user_id}/${gen.id}_enhanced.${ext}`;
 
             const { error: uploadError } = await supabase.storage
               .from("designs")
               .upload(filePath, buffer, {
-                contentType: enhancedMime,
+                contentType: finalMime,
                 upsert: true,
               });
 

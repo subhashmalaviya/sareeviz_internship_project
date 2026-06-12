@@ -2,7 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { Client, handle_file } from "@gradio/client";
-import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer } from "@/utils/ai";
+import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
 
 // Helper to upload base64 image to Supabase Storage
 async function uploadBase64ToStorage(
@@ -10,17 +10,28 @@ async function uploadBase64ToStorage(
   base64Data: string,
   mimeType: string,
   userId: string,
-  genId: string
+  genId: string,
+  outputFormat?: string,
+  resolution?: string,
+  aspectRatio?: string
 ) {
   try {
-    const buffer = Buffer.from(base64Data, "base64");
-    const ext = mimeType === "image/png" ? "png" : "jpg";
+    let buffer: any = Buffer.from(base64Data, "base64");
+    let finalMimeType = mimeType;
+
+    if (outputFormat || resolution || aspectRatio) {
+      const processed = await processImageBuffer(buffer, outputFormat, resolution, aspectRatio);
+      buffer = processed.buffer;
+      finalMimeType = processed.mimeType;
+    }
+
+    const ext = finalMimeType === "image/png" ? "png" : "jpg";
     const filePath = `${userId}/${genId}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("designs")
       .upload(filePath, buffer, {
-        contentType: mimeType,
+        contentType: finalMimeType,
         upsert: true,
       });
 
@@ -265,7 +276,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           base64Data,
           mimeType,
           user.id,
-          tempId
+          tempId,
+          outputFormat,
+          resolution,
+          aspectRatio
         );
 
         if (publicUrl) {
@@ -349,7 +363,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             base64Data,
             "image/png",
             user.id,
-            tempId
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
           );
 
           if (publicUrl) {
@@ -400,7 +417,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             base64Data,
             "image/png",
             user.id,
-            tempId
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
           );
 
           if (publicUrl) {
@@ -449,7 +469,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           enhancedBase64,
           enhancedMime,
           user.id,
-          tempId
+          tempId,
+          outputFormat,
+          resolution,
+          aspectRatio
         );
 
         if (publicUrl) {
@@ -476,7 +499,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
               fetched.data,
               fetched.mimeType,
               user.id,
-              `restored_${Date.now()}`
+              `restored_${Date.now()}`,
+              outputFormat,
+              resolution,
+              aspectRatio
             );
             if (publicUrl) {
               generatedImageUrl = publicUrl;
@@ -530,7 +556,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             base64Data,
             "image/png",
             user.id,
-            tempId
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
           );
 
           if (publicUrl) {
@@ -607,7 +636,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
               base64Data,
               "image/png",
               user.id,
-              tempId
+              tempId,
+              outputFormat,
+              resolution,
+              aspectRatio
             );
 
             if (publicUrl) {
@@ -671,7 +703,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             base64Data,
             "image/jpeg",
             user.id,
-            tempId
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
           );
 
           if (publicUrl) {
@@ -763,7 +798,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
                   part.inlineData.data,
                   mimeType,
                   user.id,
-                  tempId
+                  tempId,
+                  outputFormat,
+                  resolution,
+                  aspectRatio
                 );
 
                 if (publicUrl) {
@@ -796,7 +834,10 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             base64Data,
             mimeType,
             user.id,
-            tempId
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
           );
 
           if (publicUrl) {
