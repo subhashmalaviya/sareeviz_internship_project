@@ -86,6 +86,7 @@ export default function StudioPage() {
   const [balance, setBalance] = useState<number>(0);
   const [recentGenerations, setRecentGenerations] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form State
   const [generateFor, setGenerateFor] = useState("saree");
@@ -270,24 +271,38 @@ export default function StudioPage() {
               // type === "top_bottom"
               // img1 is Top (Kurti, Kurta, etc.), img2 is Bottom (pants, skirt, etc.)
               
-              // Bottom (Pants/Skirt) drawn FIRST so Top (Kurta/Dress) overlaps it properly
+              // Bottom (Pants/Skirt) drawn at the lower half without overlapping
               ctx.save();
-              const bWidth = 0.55 * canvas.width;
+              const bWidth = 0.5 * canvas.width;
               const bAspect = img2.naturalHeight / img2.naturalWidth;
-              const bHeight = bWidth * bAspect;
-              const bX = (canvas.width - bWidth) / 2;
-              const bY = 0.45 * canvas.height;
-              ctx.drawImage(img2, bX, bY, bWidth, bHeight);
+              let bHeight = bWidth * bAspect;
+              // Max height 45% of canvas
+              const maxBHeight = 0.45 * canvas.height;
+              let finalBWidth = bWidth;
+              if (bHeight > maxBHeight) {
+                bHeight = maxBHeight;
+                finalBWidth = bHeight / bAspect;
+              }
+              const bX = (canvas.width - finalBWidth) / 2;
+              const bY = 0.52 * canvas.height; // Starts just below center
+              ctx.drawImage(img2, bX, bY, finalBWidth, bHeight);
               ctx.restore();
 
-              // Top (Kurta/Kurti) drawn SECOND
+              // Top (Kurta/Kurti) drawn at the upper half without overlapping
               ctx.save();
-              const tWidth = 0.6 * canvas.width;
+              const tWidth = 0.5 * canvas.width;
               const tAspect = img1.naturalHeight / img1.naturalWidth;
-              const tHeight = tWidth * tAspect;
-              const tX = (canvas.width - tWidth) / 2;
-              const tY = 0.10 * canvas.height;
-              ctx.drawImage(img1, tX, tY, tWidth, tHeight);
+              let tHeight = tWidth * tAspect;
+              // Max height 45% of canvas
+              const maxTHeight = 0.45 * canvas.height;
+              let finalTWidth = tWidth;
+              if (tHeight > maxTHeight) {
+                tHeight = maxTHeight;
+                finalTWidth = tHeight / tAspect;
+              }
+              const tX = (canvas.width - finalTWidth) / 2;
+              const tY = 0.05 * canvas.height; // Starts near top
+              ctx.drawImage(img1, tX, tY, finalTWidth, tHeight);
               ctx.restore();
             }
             resolve(canvas.toDataURL("image/png"));
@@ -544,6 +559,23 @@ export default function StudioPage() {
     }
   };
 
+  const handleDeleteProject = async (id: string) => {
+    try {
+      setDeletingId(id);
+      const { error } = await supabase
+        .from("generations")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      setRecentGenerations((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const fetchDashboardData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -756,58 +788,80 @@ export default function StudioPage() {
     }
 
     try {
-      const payload = {
-        generateFor: activeTab === "combine" ? "saree" : generateFor,
-        photographyStyle,
-        outputFormat,
-        aspectRatio,
-        resolution,
-        modelPose: activeTab === "combine" ? DEFAULT_POSES[selectedCombinePose - 1]?.label || "Front Standing" : modelPose,
-        skinTone,
-        backgroundStyle,
-        sareeColourHint,
-        original_image_url: mainDesignUrl,
-        pose_model_bg: finalPoseModelBg,
-        useMockMode: useMockMode,
-        aiPipeline: actualAiPipeline,
-        additional_designs: uploads,
-        catalogueOption: catalogueOption,
-      };
+      let posesToRun = [null as number | null];
+      if (activeTab === "image" && usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
+        posesToRun = [...selectedImagePoses];
+      } else if (activeTab === "combine" && !isCustomModel) {
+        posesToRun = [selectedCombinePose];
+      }
 
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      for (let i = 0; i < posesToRun.length; i++) {
+        const currentPoseNum = posesToRun[i];
+        
+        let jobPoseModelBg = finalPoseModelBg;
+        if (currentPoseNum !== null) {
+          if (activeTab === "combine") {
+            jobPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${currentPoseNum}.webp`;
+          } else if (activeTab === "image") {
+            const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
+            const posePrefix = isMaleCategory ? "male_pose" : "pose";
+            const poseExt = isMaleCategory ? "png" : "webp";
+            jobPoseModelBg = `/poses/${posePrefix}${currentPoseNum}.${poseExt}`;
+          }
+        }
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        setGenerationError({
-          message: errorData.error || "Failed to start generation.",
-          code: errorData.errorCode || "GEN_FAILED"
+        const payload = {
+          generateFor: activeTab === "combine" ? "saree" : generateFor,
+          photographyStyle,
+          outputFormat,
+          aspectRatio,
+          resolution,
+          modelPose: activeTab === "combine" ? DEFAULT_POSES[currentPoseNum ? currentPoseNum - 1 : selectedCombinePose - 1]?.label || "Front Standing" : modelPose,
+          skinTone,
+          backgroundStyle,
+          sareeColourHint,
+          original_image_url: mainDesignUrl,
+          pose_model_bg: jobPoseModelBg,
+          useMockMode: useMockMode,
+          aiPipeline: actualAiPipeline,
+          additional_designs: uploads,
+          catalogueOption: catalogueOption,
+        };
+
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
         });
-        return;
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          // If multiple poses, alert error but continue if possible? No, break.
+          setGenerationError({
+            message: errorData.error || "Failed to start generation.",
+            code: errorData.errorCode || "GEN_FAILED"
+          });
+          break;
+        }
+
+        setGenerationError(null);
+        const newGen = await res.json();
+
+        setRecentGenerations(prev => [newGen, ...prev]);
+        // Set the first one as active view, or the latest
+        if (i === 0) {
+          setCurrentGenId(newGen.id);
+        }
+        setRightTab("generate");
+
+        if (!useMockMode) {
+          setBalance(prev => Math.max(0, prev - 1));
+        }
+
+        fetchDashboardData();
       }
-
-      // Clear any previous error on success
-      setGenerationError(null);
-
-      const newGen = await res.json();
-
-      // Prepend the new generation to history
-      setRecentGenerations(prev => [newGen, ...prev]);
-      setCurrentGenId(newGen.id);
-      setRightTab("generate");
-
-      // Optimistically deduct credit in local state
-      if (!useMockMode) {
-        setBalance(prev => Math.max(0, prev - 1));
-      }
-
-      // Quietly refresh data
-      fetchDashboardData();
     } catch (err: any) {
       console.error("Generation error:", err);
       setGenerationError({
@@ -2737,21 +2791,37 @@ export default function StudioPage() {
                     )}
 
                     {/* Action Overlay on hover */}
-                    {gen.status === "done" && (
+                    {(gen.status === "done" || gen.status === "failed") && (
                       <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200 z-10">
+                        {gen.status === "done" && (
+                          <>
+                            <button
+                              onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
+                              className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                              title={t("View Image") || "View Image"}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => downloadImage(displayImg, `sareeviz-gen-${gen.id.substring(0, 8)}.png`)}
+                              className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
+                              title={t("Download Image") || "Download Image"}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
                         <button
-                          onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
-                          className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                          title={t("View Image") || "View Image"}
+                          disabled={deletingId === gen.id}
+                          onClick={() => handleDeleteProject(gen.id)}
+                          className="p-1.5 rounded-lg bg-white text-red-600 hover:bg-red-50 shadow-sm hover:scale-105 transition-transform"
+                          title={t("Delete Project") || "Delete Project"}
                         >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => downloadImage(displayImg, `sareeviz-gen-${gen.id.substring(0, 8)}.png`)}
-                          className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                          title={t("Download Image") || "Download Image"}
-                        >
-                          <Download className="h-3.5 w-3.5" />
+                          {deletingId === gen.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
                         </button>
                       </div>
                     )}

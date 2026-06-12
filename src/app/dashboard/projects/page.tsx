@@ -217,18 +217,32 @@ export default function ProjectsPage() {
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    {hasOutput && (
-                      <a 
-                        href={project.generated_image_url} 
-                        download={`sareeviz-gen-${project.id}.png`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-2 rounded-xl bg-white/95 text-gray-900 hover:bg-white shadow-sm hover:scale-105 transition-all"
-                        title="Download Output"
+                    <div className="flex gap-2">
+                      {hasOutput && (
+                        <a 
+                          href={project.generated_image_url} 
+                          download={`sareeviz-gen-${project.id}.png`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2 rounded-xl bg-white/95 text-gray-900 hover:bg-white shadow-sm hover:scale-105 transition-all"
+                          title="Download Output"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      )}
+                      <button 
+                        disabled={deletingId === project.id}
+                        onClick={() => handleDeleteProject(project.id)}
+                        className="p-2 rounded-xl bg-white/95 text-red-600 hover:bg-red-50 hover:text-red-700 shadow-sm hover:scale-105 transition-all"
+                        title="Delete Project"
                       >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    )}
+                        {deletingId === project.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Floating Status Badges */}

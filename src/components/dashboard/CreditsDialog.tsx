@@ -20,14 +20,130 @@ const PACKAGES = [
   { id: "p5", price: 10000, credits: 1000, displayCredits: 1030, bonus: 30, priority: true, special: true },
 ];
 
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if ((window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 export function CreditsDialog() {
   const { t } = useLanguage();
   const supabase = createClient();
 
   const [selectedId, setSelectedId] = useState("p3");
   const [balance, setBalance] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const selectedPkg = PACKAGES.find((p) => p.id === selectedId)!;
+
+  // Clear messages when user switches packages
+  useEffect(() => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  }, [selectedId]);
+
+  const handlePayment = async () => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+      setSuccessMsg(null);
+
+      // 1. Fetch user data (email/phone/name) for prefill if available
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setErrorMsg("Please log in to purchase credits.");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Call backend to create Razorpay Order
+      const response = await fetch("/api/razorpay/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId: selectedId }),
+      });
+
+      const orderData = await response.json();
+      if (!response.ok || orderData.error) {
+        throw new Error(orderData.error || "Failed to create order");
+      }
+
+      // 3. Load Razorpay Script dynamically
+      const isScriptLoaded = await loadRazorpayScript();
+      if (!isScriptLoaded) {
+        throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
+      }
+
+      // 4. Initialize Razorpay options
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "SareeViz",
+        description: `Buy ${orderData.credits} Credits`,
+        order_id: orderData.id,
+        handler: async function (response: any) {
+          try {
+            setLoading(true);
+            const verifyRes = await fetch("/api/razorpay/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || verifyData.error) {
+              throw new Error(verifyData.error || "Payment verification failed");
+            }
+
+            setSuccessMsg(`Successfully credited ${orderData.credits} credits!`);
+            if (verifyData.credits !== undefined) {
+              setBalance(verifyData.credits);
+            }
+          } catch (err: any) {
+            console.error(err);
+            setErrorMsg(err.message || "Failed to verify payment. Please contact support.");
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: user.user_metadata?.full_name || "",
+          email: user.email || "",
+          contact: user.phone || "",
+        },
+        theme: {
+          color: "#db2777",
+        },
+        modal: {
+          ondismiss: function () {
+            setLoading(false);
+          },
+        },
+      };
+
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "An error occurred initiating checkout");
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -182,11 +298,36 @@ export function CreditsDialog() {
             </span>
           </div>
 
+          {/* Messages */}
+          {errorMsg && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold text-center animate-pulse">
+              {errorMsg}
+            </div>
+          )}
+          {successMsg && (
+            <div className="p-3 bg-green-50 border border-green-100 rounded-xl text-green-600 text-xs font-semibold text-center">
+              {successMsg}
+            </div>
+          )}
+
           {/* Action Button */}
           <div className="pt-2">
-            <button className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-xl shadow-md text-sm font-bold transition-transform hover:scale-[1.02]">
-              {t("Buy")} {selectedPkg.displayCredits || selectedPkg.credits} {t("Credits for ₹")}
-              {selectedPkg.price.toLocaleString("en-IN")}
+            <button
+              onClick={handlePayment}
+              disabled={loading}
+              className="w-full h-12 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl shadow-md text-sm font-bold transition-transform hover:scale-[1.02] disabled:scale-100 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  {t("Processing...") || "Processing..."}
+                </>
+              ) : (
+                <>
+                  {t("Buy")} {selectedPkg.displayCredits || selectedPkg.credits} {t("Credits for ₹")}
+                  {selectedPkg.price.toLocaleString("en-IN")}
+                </>
+              )}
             </button>
             <p className="text-[10px] text-center text-gray-400 mt-3 font-medium">
               {t("Secure payment powered by Razorpay")}
