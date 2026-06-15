@@ -872,11 +872,19 @@ export default function StudioPage() {
         });
 
         if (!res.ok) {
-          const errorData = await res.json();
-          // If multiple poses, alert error but continue if possible? No, break.
+          let errMsg = "Failed to start generation.";
+          try {
+            const errorData = await res.json();
+            errMsg = errorData.error || errMsg;
+          } catch {
+            try {
+              const text = await res.text();
+              errMsg = text || errMsg;
+            } catch {}
+          }
           setGenerationError({
-            message: errorData.error || "Failed to start generation.",
-            code: errorData.errorCode || "GEN_FAILED"
+            message: errMsg,
+            code: "GEN_FAILED"
           });
           break;
         }

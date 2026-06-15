@@ -143,7 +143,7 @@ export async function GET(request: Request) {
       
       if (elapsed > 8000) {
         // Complete mock generation — use original image as placeholder
-        let mockImageUrl = gen.original_image_url;
+        let mockImageUrl = gen.model_settings?.pose_model_bg || gen.original_image_url;
         
         // Apply branding if present in settings
         const branding = gen.model_settings?.branding;

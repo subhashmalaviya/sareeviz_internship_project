@@ -55,16 +55,38 @@ export async function applyBrandingToImageBuffer(buffer: Buffer, config: Brandin
     if (logoBuffer && config.addCenterWatermark) {
       try {
         const watermarkWidth = Math.round(width * 0.35); // 35% of image width
-        // Resize logo and make it semi-transparent (15% opacity)
-        const watermarkProcessed = await sharp(logoBuffer)
-          .resize({ width: watermarkWidth })
-          .ensureAlpha()
-          .linear([1, 1, 1, 0.15], [0, 0, 0, 0])
-          .toBuffer();
+        
+        let mimeType = "image/png";
+        if (logoBuffer[0] === 0xff && logoBuffer[1] === 0xd8) {
+          mimeType = "image/jpeg";
+        } else if (logoBuffer[0] === 0x47 && logoBuffer[1] === 0x49) {
+          mimeType = "image/gif";
+        } else if (logoBuffer[0] === 0x52 && logoBuffer[1] === 0x49 && logoBuffer[2] === 0x46 && logoBuffer[3] === 0x46) {
+          mimeType = "image/webp";
+        }
+        
+        const logoBase64 = logoBuffer.toString("base64");
+        const logoDataUri = `data:${mimeType};base64,${logoBase64}`;
+
+        const logoMeta = await sharp(logoBuffer).metadata();
+        const logoW = logoMeta.width || 100;
+        const logoH = logoMeta.height || 100;
+        const aspect = logoH / logoW;
+        const watermarkHeight = Math.round(watermarkWidth * aspect);
+
+        const watermarkX = Math.round((width - watermarkWidth) / 2);
+        const watermarkY = Math.round((height - watermarkHeight) / 2);
+
+        const watermarkSvg = `
+          <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+            <image href="${logoDataUri}" x="${watermarkX}" y="${watermarkY}" width="${watermarkWidth}" height="${watermarkHeight}" opacity="0.15" />
+          </svg>
+        `;
 
         composites.push({
-          input: watermarkProcessed,
-          gravity: "center",
+          input: Buffer.from(watermarkSvg),
+          top: 0,
+          left: 0,
         });
       } catch (err) {
         console.error("Error creating center watermark overlay:", err);

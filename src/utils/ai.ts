@@ -354,3 +354,133 @@ export async function processImageBuffer(
   }
 }
 
+/**
+ * Generates a base model image using a source model image (identity) and a pose reference image.
+ */
+export async function generatePosedModel({
+  modelUrl,
+  poseUrl,
+  userId,
+  isMale,
+  geminiApiKey,
+  openRouterApiKey,
+  supabase,
+}: {
+  modelUrl: string;
+  poseUrl: string;
+  userId: string;
+  isMale: boolean;
+  geminiApiKey?: string;
+  openRouterApiKey?: string;
+  supabase: any;
+}): Promise<string | null> {
+  try {
+    console.log("Starting posed model generation...");
+    const promptText = `You are an expert AI fashion model generator.
+Generate a high-quality, professional, photorealistic studio photograph of a model.
+- The model's face, facial features, hairstyle, skin tone, and body structure MUST be IDENTICAL to the person shown in the Model Reference Image.
+- The model's pose, body orientation, and posture MUST mimic the EXACT pose shown in the Pose Reference Image.
+- The model should be wearing simple, plain, tight-fitting white underwear (such as a plain white tank top/t-shirt and white shorts/leggings) which acts as a base for digital clothing try-on.
+- The background should be clean, professional, and consistent with the Model Reference Image's background.
+- Output ONLY the generated image.`;
+
+    let base64Data = "";
+    let mimeType = "image/png";
+
+    if (geminiApiKey) {
+      try {
+        console.log("Generating posed model using direct Gemini API...");
+        const modelImgData = await fetchImageAsBase64(modelUrl);
+        const poseImgData = await fetchImageAsBase64(poseUrl);
+        if (!modelImgData || !poseImgData) {
+          throw new Error("Failed to fetch model or pose image for Gemini");
+        }
+
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        const contents = [
+          { text: promptText },
+          {
+            inlineData: {
+              mimeType: modelImgData.mimeType,
+              data: modelImgData.data,
+            },
+          },
+          {
+            inlineData: {
+              mimeType: poseImgData.mimeType,
+              data: poseImgData.data,
+            },
+          },
+        ];
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash-image",
+          contents: contents,
+          config: {
+            responseModalities: ["TEXT", "IMAGE"],
+          },
+        });
+
+        if (response.candidates && response.candidates[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData && part.inlineData.data) {
+              base64Data = part.inlineData.data;
+              mimeType = part.inlineData.mimeType || "image/png";
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Direct Gemini posed model generation failed:", err);
+      }
+    }
+
+    if (!base64Data && openRouterApiKey) {
+      try {
+        console.log("Generating posed model using OpenRouter fallback...");
+        const result = await generateViaOpenRouter(
+          openRouterApiKey,
+          "google/gemini-2.5-flash-image",
+          promptText,
+          modelUrl,
+          "3:4",
+          [poseUrl]
+        );
+        base64Data = result.base64Data;
+        mimeType = result.mimeType;
+      } catch (err) {
+        console.error("OpenRouter posed model generation failed:", err);
+      }
+    }
+
+    if (base64Data) {
+      // Upload generated posed model to Supabase storage
+      const buffer = Buffer.from(base64Data, "base64");
+      const ext = mimeType === "image/png" ? "png" : "jpg";
+      const tempId = `posed_model_${Date.now()}`;
+      const filePath = `${userId}/${tempId}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("designs")
+        .upload(filePath, buffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("designs")
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error in generatePosedModel:", error);
+    return null;
+  }
+}
+
+

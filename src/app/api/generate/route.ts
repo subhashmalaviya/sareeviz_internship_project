@@ -2,7 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { Client, handle_file } from "@gradio/client";
-import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
+import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer, processImageBuffer, generatePosedModel } from "@/utils/ai";
 import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
 
 // Helper to upload base64 image to Supabase Storage
@@ -172,6 +172,13 @@ export async function POST(request: Request) {
       }
     }
 
+    if (pose_model_bg && additional_designs.pose_ref) {
+      additionalPromptDetails += `\n- MODEL FACE & IDENTITY: The model in the generated image MUST have the EXACT same face, facial features, hair, skin tone, and body structure as the person in the model reference image.`;
+      additionalPromptDetails += `\n- MODEL POSE REFERENCE: The model in the generated image MUST mimic the EXACT pose, posture, and body orientation as the person in the pose reference image.`;
+    } else if (pose_model_bg) {
+      additionalPromptDetails += `\n- MODEL FACE & IDENTITY: The model in the generated image MUST have the EXACT same face, facial features, hair, skin tone, and body structure as the person in the model reference image.`;
+    }
+
     if (photographyStyle === "model") {
       if (catalogueOption === "display_rack") {
         additionalPromptDetails += `\n- CATALOGUE OPTIONS: Display the matching color options on an elegant display rack/hanger on the side of the main model in the background.`;
@@ -329,6 +336,28 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       } catch (e) {
         console.error("Failed to upload local pose image:", e);
         humanImgUrl = defaultHumanImgUrl;
+      }
+    }
+
+    // If both model image and pose reference are provided, generate a posed model first
+    if (pose_model_bg && additional_designs.pose_ref && !useMockMode) {
+      try {
+        console.log("Both model and pose reference provided. Generating posed model first...");
+        const posedModelUrl = await generatePosedModel({
+          modelUrl: pose_model_bg,
+          poseUrl: additional_designs.pose_ref,
+          userId: user.id,
+          isMale: isMaleCategoryForPose,
+          geminiApiKey,
+          openRouterApiKey,
+          supabase
+        });
+        if (posedModelUrl) {
+          humanImgUrl = posedModelUrl;
+          console.log("Generated posed model image successfully:", humanImgUrl);
+        }
+      } catch (err) {
+        console.error("Failed to generate posed model image:", err);
       }
     }
 
