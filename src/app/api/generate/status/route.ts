@@ -1,8 +1,53 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
+import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
 
 export const dynamic = "force-dynamic";
+
+// Helper to upload a branded buffer to Supabase Storage
+async function uploadBufferToStorage(
+  supabase: any,
+  buffer: Buffer,
+  userId: string,
+  genId: string,
+  outputFormat?: string,
+  resolution?: string,
+  aspectRatio?: string,
+  mimeType: string = "image/png"
+) {
+  try {
+    let finalBuffer = buffer;
+    let finalMimeType = mimeType;
+
+    if (outputFormat || resolution || aspectRatio) {
+      const processed = await processImageBuffer(buffer, outputFormat, resolution, aspectRatio);
+      finalBuffer = processed.buffer;
+      finalMimeType = processed.mimeType;
+    }
+
+    const ext = finalMimeType === "image/png" ? "png" : "jpg";
+    const filePath = `${userId}/${genId}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("designs")
+      .upload(filePath, finalBuffer, {
+        contentType: finalMimeType,
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("designs")
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  } catch (error) {
+    console.error("Supabase storage buffer upload error:", error);
+    return null;
+  }
+}
 
 // Helper to upload image to Supabase Storage
 async function uploadToStorage(
@@ -98,7 +143,32 @@ export async function GET(request: Request) {
       
       if (elapsed > 8000) {
         // Complete mock generation — use original image as placeholder
-        const mockImageUrl = gen.original_image_url;
+        let mockImageUrl = gen.original_image_url;
+        
+        // Apply branding if present in settings
+        const branding = gen.model_settings?.branding;
+        if (branding && (branding.brandLogo || branding.brandName || branding.designNumber)) {
+          try {
+            console.log("Applying branding to mock image:", mockImageUrl);
+            const finalBuffer = await applyBrandingToUrl(mockImageUrl, branding);
+            const tempId = `mock_branded_${Date.now()}`;
+            const brandedUrl = await uploadBufferToStorage(
+              supabase,
+              finalBuffer,
+              gen.user_id,
+              tempId,
+              gen.model_settings?.outputFormat,
+              gen.model_settings?.resolution,
+              gen.model_settings?.aspectRatio
+            );
+            if (brandedUrl) {
+              mockImageUrl = brandedUrl;
+              console.log("Branded mock image uploaded successfully:", mockImageUrl);
+            }
+          } catch (err) {
+            console.error("Failed to apply branding to mock image:", err);
+          }
+        }
         
         const { data: updatedGen, error: updateErr } = await supabase
           .from("generations")
@@ -253,6 +323,31 @@ export async function GET(request: Request) {
             }
           } catch (enhanceErr) {
             console.error("Async Hybrid Enhancement failed, keeping base Replicate image:", enhanceErr);
+          }
+        }
+
+        // Apply branding if present in settings
+        const branding = gen.model_settings?.branding;
+        if (branding && (branding.brandLogo || branding.brandName || branding.designNumber)) {
+          try {
+            console.log("Applying branding to Replicate output image:", publicUrl);
+            const finalBuffer = await applyBrandingToUrl(publicUrl, branding);
+            const tempId = `replicate_branded_${Date.now()}`;
+            const brandedUrl = await uploadBufferToStorage(
+              supabase,
+              finalBuffer,
+              gen.user_id,
+              tempId,
+              gen.model_settings?.outputFormat,
+              gen.model_settings?.resolution,
+              gen.model_settings?.aspectRatio
+            );
+            if (brandedUrl) {
+              publicUrl = brandedUrl;
+              console.log("Branded Replicate image uploaded successfully:", publicUrl);
+            }
+          } catch (err) {
+            console.error("Failed to apply branding to Replicate image:", err);
           }
         }
 

@@ -103,6 +103,7 @@ export default function StudioPage() {
   const [posePrompts, setPosePrompts] = useState(DEFAULT_POSES.map(p => p.desc));
   const [expandedPose, setExpandedPose] = useState<number | null>(1);
   const [selectedImagePoses, setSelectedImagePoses] = useState<number[]>([]);
+  const [addCenterWatermark, setAddCenterWatermark] = useState(false);
   const [brandName, setBrandName] = useState("");
   const [designNumber, setDesignNumber] = useState("");
   const [fontSize, setFontSize] = useState(4.0);
@@ -850,6 +851,16 @@ export default function StudioPage() {
           aiPipeline: actualAiPipeline,
           additional_designs: uploads,
           catalogueOption: catalogueOption,
+          branding: {
+            brandLogo: uploads["image_brand_logo"] || null,
+            addCenterWatermark,
+            brandName,
+            designNumber,
+            fontSize,
+            isBold,
+            fontColor,
+            textPosition
+          }
         };
 
         const res = await fetch("/api/generate", {
@@ -1640,7 +1651,12 @@ export default function StudioPage() {
                         />
                       </div>
                       <label className="flex items-start gap-2 cursor-pointer mt-2">
-                        <input type="checkbox" className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" />
+                        <input
+                          type="checkbox"
+                          checked={addCenterWatermark}
+                          onChange={(e) => setAddCenterWatermark(e.target.checked)}
+                          className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500"
+                        />
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-gray-700 leading-tight">
                             {t("Add brand logo as center watermark")}

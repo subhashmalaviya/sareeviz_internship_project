@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { Client, handle_file } from "@gradio/client";
 import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
+import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
 
 // Helper to upload base64 image to Supabase Storage
 async function uploadBase64ToStorage(
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
       aiPipeline = "auto",
       additional_designs = {},
       catalogueOption = "display_rack",
+      branding,
     } = body;
 
     // Validate main design URL
@@ -929,6 +931,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
                   aiPipeline,
                   additional_designs,
                   catalogueOption,
+                  branding: branding || null,
                 },
               })
               .select()
@@ -1024,6 +1027,38 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       console.warn("Running in Mock Mode — no AI provider available.");
     }
 
+    // Apply branding to final synchronous generations
+    if (
+      generationStatus === "done" &&
+      generatedImageUrl &&
+      branding &&
+      (branding.brandLogo || branding.brandName || branding.designNumber)
+    ) {
+      try {
+        console.log("Applying branding to final synchronous image:", generatedImageUrl);
+        const brandedBuffer = await applyBrandingToUrl(generatedImageUrl, branding);
+        const tempId = `branded_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        
+        const brandedUrl = await uploadBase64ToStorage(
+          supabase,
+          brandedBuffer.toString("base64"),
+          "image/png",
+          user.id,
+          tempId,
+          outputFormat,
+          resolution,
+          aspectRatio
+        );
+
+        if (brandedUrl) {
+          generatedImageUrl = brandedUrl;
+          console.log("Branded image uploaded successfully:", brandedUrl);
+        }
+      } catch (err) {
+        console.error("Failed to apply branding to synchronous generation:", err);
+      }
+    }
+
     // Record the generation in Supabase (for Gemini or Mock — Replicate returns above)
     const { data: genData, error: genError } = await supabase
       .from("generations")
@@ -1050,6 +1085,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           aiPipeline,
           additional_designs,
           catalogueOption,
+          branding: branding || null,
         },
       })
       .select()
