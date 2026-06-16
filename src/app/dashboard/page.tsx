@@ -889,6 +889,7 @@ export default function StudioPage() {
           aiPipeline: actualAiPipeline,
           additional_designs: mergedAdditionalDesigns,
           catalogueOption: catalogueOption,
+          generation_type: activeTab,
           branding: {
             brandLogo: uploads["image_brand_logo"] || null,
             addCenterWatermark,
@@ -2391,7 +2392,8 @@ export default function StudioPage() {
                   const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
                   const uploadedImg = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
                   const displayImg = isDone ? currentGen.generated_image_url : (currentGen?.original_image_url || uploadedImg);
-
+                  const isVideo = displayImg?.includes(".mp4") || currentGen?.model_settings?.generation_type === "video";
+ 
                   return (
                     <div className="mb-6">
                       {/* Download ZIP Button */}
@@ -2399,7 +2401,7 @@ export default function StudioPage() {
                         disabled={!isDone}
                         onClick={() => {
                           if (displayImg) {
-                            downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.png`);
+                            downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.${isVideo ? "mp4" : "png"}`);
                           }
                         }}
                         className={`w-full h-11 rounded-xl shadow-sm text-sm font-semibold flex items-center justify-center gap-2 mb-4 border transition-all
@@ -2458,7 +2460,7 @@ export default function StudioPage() {
 
                           {isDone && displayImg && (
                             <>
-                              {currentGen?.model_settings?.is_mock ? (
+                              {currentGen?.model_settings?.is_mock && currentGen?.model_settings?.generation_type !== "video" ? (
                                 <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
                                   {/* Top: Model Pose */}
                                   <div className="h-[55%] w-full relative">
@@ -2491,6 +2493,12 @@ export default function StudioPage() {
                                     ⚡ {t("Preview Only — Add API Credit for AI Try-On") || "Preview Only — Add API Credit for AI Try-On"}
                                   </div>
                                 </div>
+                              ) : isVideo ? (
+                                <video
+                                  src={displayImg}
+                                  controls
+                                  className="w-full h-full object-cover"
+                                />
                               ) : (
                                 <img
                                   src={displayImg}
@@ -2498,19 +2506,19 @@ export default function StudioPage() {
                                   className="w-full h-full object-cover"
                                 />
                               )}
-                              {/* Hover Action Overlay */}
-                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200 z-10">
+                              {/* Action Overlay */}
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1.5 transition-opacity duration-200 z-20">
                                 <button
                                   onClick={() => setSelectedVideo({ title: `Project: ${currentGen ? currentGen.id.substring(0, 8) : "new"}`, src: displayImg })}
-                                  className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                                  title={t("View Image") || "View Image"}
+                                  className="p-1.5 rounded-lg bg-white/90 backdrop-blur-xs text-gray-900 shadow-md hover:scale-105 hover:bg-white transition-all"
+                                  title={isVideo ? t("Play Video") : t("View Image")}
                                 >
-                                  <Eye className="h-3.5 w-3.5" />
+                                  {isVideo ? <PlayCircle className="h-3.5 w-3.5 text-pink-600 animate-pulse" /> : <Eye className="h-3.5 w-3.5" />}
                                 </button>
                                 <button
-                                  onClick={() => downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.png`)}
-                                  className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                                  title={t("Download Image") || "Download Image"}
+                                  onClick={() => downloadImage(displayImg, `sareeviz-gen-${currentGen ? currentGen.id.substring(0, 8) : "new"}.${isVideo ? "mp4" : "png"}`)}
+                                  className="p-1.5 rounded-lg bg-white/90 backdrop-blur-xs text-gray-900 shadow-md hover:scale-105 hover:bg-white transition-all"
+                                  title={isVideo ? t("Download Video") : t("Download Image")}
                                 >
                                   <Download className="h-3.5 w-3.5" />
                                 </button>
@@ -2807,13 +2815,27 @@ export default function StudioPage() {
               {recentGenerations.map((gen) => {
                 const isOutput = gen.status === "done" && gen.generated_image_url;
                 const displayImg = isOutput ? gen.generated_image_url : gen.original_image_url;
+                const isVideo = displayImg?.includes(".mp4") || gen.model_settings?.generation_type === "video";
                 return (
                   <div
                     key={gen.id}
                     className="relative aspect-[3/4] bg-white rounded-xl border border-gray-200 overflow-hidden group shadow-sm flex flex-col hover:shadow-md transition-shadow"
                   >
                     {displayImg ? (
-                      gen.model_settings?.is_mock ? (
+                      isVideo ? (
+                        <div className="w-full h-full relative bg-gray-800">
+                          <video
+                            src={`${displayImg}#t=0.1`}
+                            className="w-full h-full object-cover opacity-80"
+                            preload="metadata"
+                            muted
+                            playsInline
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <PlayCircle className="h-10 w-10 text-white drop-shadow-md opacity-90 group-hover:scale-110 transition-transform" />
+                          </div>
+                        </div>
+                      ) : gen.model_settings?.is_mock && gen.model_settings?.generation_type !== "video" ? (
                         <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
                           {/* Top: Model Pose */}
                           <div className="h-[55%] w-full relative">
@@ -2858,7 +2880,7 @@ export default function StudioPage() {
                       <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur-md bg-white/90 ${
                         gen.status === "done"
                           ? "text-green-600 border border-green-200/50"
-                          : gen.status === "pending" || gen.status === "processing"
+                          : gen.status === "pending" || gen.status === "processing" || gen.status === "processing_running"
                           ? "text-amber-600 border border-amber-200/50 animate-pulse"
                           : "text-red-600 border border-red-200/50"
                       }`}>
@@ -2867,11 +2889,11 @@ export default function StudioPage() {
                     </div>
 
                     {/* Pending / Processing Loader Overlay */}
-                    {(gen.status === "pending" || gen.status === "processing") && (
+                    {(gen.status === "pending" || gen.status === "processing" || gen.status === "processing_running") && (
                       <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex flex-col items-center justify-center z-10">
                         <Loader2 className="h-6 w-6 text-pink-500 animate-spin mb-1.5" />
                         <span className="text-[10px] text-gray-500 font-medium capitalize animate-pulse">
-                          {t(gen.status)}...
+                          {gen.status === "processing_running" ? t("generating...") : t(gen.status)}...
                         </span>
                       </div>
                     )}
@@ -2884,14 +2906,14 @@ export default function StudioPage() {
                             <button
                               onClick={() => setSelectedVideo({ title: `Project: ${gen.id.substring(0, 8)}`, src: displayImg })}
                               className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                              title={t("View Image") || "View Image"}
+                              title={isVideo ? "Play Video" : "View Image"}
                             >
-                              <Eye className="h-3.5 w-3.5" />
+                              {isVideo ? <PlayCircle className="h-3.5 w-3.5 text-pink-600" /> : <Eye className="h-3.5 w-3.5" />}
                             </button>
                             <button
-                              onClick={() => downloadImage(displayImg, `sareeviz-gen-${gen.id.substring(0, 8)}.png`)}
+                              onClick={() => downloadImage(displayImg, `sareeviz-gen-${gen.id.substring(0, 8)}.${isVideo ? "mp4" : "png"}`)}
                               className="p-1.5 rounded-lg bg-white text-gray-900 shadow-sm hover:scale-105 transition-transform"
-                              title={t("Download Image") || "Download Image"}
+                              title={isVideo ? "Download Video" : "Download Image"}
                             >
                               <Download className="h-3.5 w-3.5" />
                             </button>

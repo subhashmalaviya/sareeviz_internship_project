@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       additional_designs = {},
       catalogueOption = "display_rack",
       branding,
+      generation_type,
     } = body;
 
     // Validate main design URL
@@ -235,6 +236,98 @@ BACKGROUND: ${backgroundStyle || "Luxury Palace / Haveli"}
 PHOTOGRAPHY STYLE: ${photographyStyle === "flat_lay" ? "Flat lay product photography on elegant surface" : "High-end fashion editorial photography, professional model photoshoot"}
 
 OUTPUT: A single photorealistic fashion photograph, sharp focus, professional lighting, magazine quality.`;
+
+    if (generation_type === "video") {
+      if (useMockMode) {
+        // Record mock video generation
+        const { data: genData, error: genError } = await supabase
+          .from("generations")
+          .insert({
+            user_id: user.id,
+            status: "pending",
+            prompt: prompt,
+            original_image_url: original_image_url,
+            generated_image_url: null,
+            model_settings: {
+              generateFor,
+              photographyStyle,
+              outputFormat,
+              aspectRatio,
+              resolution,
+              modelPose,
+              skinTone,
+              backgroundStyle,
+              sareeColourHint,
+              provider: "mock",
+              is_mock: true,
+              aiPipeline,
+              additional_designs,
+              catalogueOption,
+              branding: branding || null,
+              generation_type: "video",
+            },
+          })
+          .select()
+          .single();
+
+        if (genError || !genData) {
+          console.error("Database insert failed:", genError);
+          return NextResponse.json(
+            { error: "Failed to record generation in database" },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json(genData);
+      } else {
+        // Record real video generation
+        const { data: genData, error: genError } = await supabase
+          .from("generations")
+          .insert({
+            user_id: user.id,
+            status: "processing",
+            prompt: prompt,
+            original_image_url: original_image_url,
+            generated_image_url: null,
+            model_settings: {
+              generateFor,
+              photographyStyle,
+              outputFormat,
+              aspectRatio,
+              resolution,
+              modelPose,
+              skinTone,
+              backgroundStyle,
+              sareeColourHint,
+              provider: "gradio_svd",
+              is_mock: false,
+              aiPipeline,
+              additional_designs,
+              catalogueOption,
+              branding: branding || null,
+              generation_type: "video",
+            },
+          })
+          .select()
+          .single();
+
+        if (genError || !genData) {
+          console.error("Database insert failed:", genError);
+          return NextResponse.json(
+            { error: "Failed to record generation in database" },
+            { status: 500 }
+          );
+        }
+
+        // Deduct 1 credit securely for starting video generation
+        await supabase
+          .from("credits")
+          .update({ balance: Math.max(0, credits.balance - 1) })
+          .eq("user_id", user.id);
+
+        return NextResponse.json(genData);
+      }
+    }
 
     let generatedImageUrl = "";
     let generationStatus = "failed";

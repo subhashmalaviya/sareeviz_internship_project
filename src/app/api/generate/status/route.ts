@@ -1,7 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer } from "@/utils/ai";
+import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer, generateVideoViaSVD } from "@/utils/ai";
 import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
+import { Client, handle_file } from "@gradio/client";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,41 @@ async function uploadBufferToStorage(
     return publicUrl;
   } catch (error) {
     console.error("Supabase storage buffer upload error:", error);
+    return null;
+  }
+}
+
+// Helper to upload video to Supabase Storage
+async function uploadVideoToStorage(
+  supabase: any,
+  videoUrl: string,
+  userId: string,
+  genId: string
+) {
+  try {
+    const res = await fetch(videoUrl);
+    if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+    
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const finalMimeType = res.headers.get("content-type") || "video/mp4";
+    const filePath = `${userId}/${genId}.mp4`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("designs")
+      .upload(filePath, buffer, {
+        contentType: finalMimeType,
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("designs")
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  } catch (error) {
+    console.error("Supabase storage video upload error:", error);
     return null;
   }
 }
@@ -144,6 +180,9 @@ export async function GET(request: Request) {
       if (elapsed > 8000) {
         // Complete mock generation — use original image as placeholder
         let mockImageUrl = gen.model_settings?.pose_model_bg || gen.original_image_url;
+        if (gen.model_settings?.generation_type === "video") {
+          mockImageUrl = "/videos/video1-simple-15.mp4";
+        }
         
         // Apply branding if present in settings
         const branding = gen.model_settings?.branding;
@@ -405,6 +444,209 @@ export async function GET(request: Request) {
           return NextResponse.json(updatedGen || gen);
         }
         return NextResponse.json(gen);
+      }
+    }
+
+    // ─── Stable Video Diffusion: Gradio video generation pipeline ───
+    if (provider === "gradio_svd") {
+      // Prevent concurrent duplicate executions
+      if (gen.status === "processing_running") {
+        return NextResponse.json(gen);
+      }
+
+      // Lock status immediately in the database
+      const { data: genLocked } = await supabase
+        .from("generations")
+        .update({ status: "processing_running" })
+        .eq("id", id)
+        .select()
+        .single();
+      
+      const activeGen = genLocked || gen;
+
+      // Run SVD pipeline
+      try {
+        console.log("Starting SVD video generation pipeline...");
+        const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
+        const originalUrl = activeGen.original_image_url;
+
+        // 1. First run VTON (try-on) to drape clothes on a model
+        let modelImgUrl = originalUrl;
+        
+        try {
+          console.log("Running VTON first to generate static model try-on image...");
+          const defaultHumanImgUrl = "https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose1.webp";
+          
+          const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
+          let vtonResultUrl = null;
+          
+          if (kaggleVtonUrl) {
+            try {
+              console.log("Attempting Kaggle VTON...");
+              const client = await Client.connect(kaggleVtonUrl, hfToken ? { token: hfToken } : {});
+              const result = await client.predict("/tryon", [
+                { background: handle_file(defaultHumanImgUrl), layers: [], composite: null },
+                handle_file(originalUrl),
+                activeGen.model_settings?.generateFor || "garment",
+                true,  // is_checked
+                false, // is_checked_crop
+                30,    // denoise_steps
+                42,    // seed
+              ]) as any;
+              if (result && result.data && result.data[0]) {
+                vtonResultUrl = result.data[0].url;
+              }
+            } catch (kaggleErr) {
+              console.error("Kaggle VTON in video pipeline failed:", kaggleErr);
+            }
+          }
+
+          if (!vtonResultUrl) {
+            try {
+              console.log("Attempting Kwai-Kolors VTON...");
+              const client = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { token: hfToken } : {});
+              const result = await client.predict(2, [
+                handle_file(defaultHumanImgUrl),
+                handle_file(originalUrl),
+                42,
+                true
+              ]) as any;
+              if (result && result.data && result.data[0]) {
+                vtonResultUrl = result.data[0].url;
+              }
+            } catch (kolorsErr) {
+              console.error("Kwai-Kolors VTON in video pipeline failed:", kolorsErr);
+            }
+          }
+
+          // Fallback: Use OpenRouter/Gemini to generate a model image with the garment
+          if (!vtonResultUrl) {
+            const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+            const geminiApiKey = process.env.GEMINI_API_KEY;
+            if (openRouterApiKey || geminiApiKey) {
+              try {
+                console.log("VTON spaces exhausted. Falling back to AI image generation...");
+                const { generateViaOpenRouter } = await import("@/utils/ai");
+                const generateFor = activeGen.model_settings?.generateFor || "saree";
+                const skinTone = activeGen.model_settings?.skinTone || "Wheatish";
+                const modelPose = activeGen.model_settings?.modelPose || "Front Standing";
+                const bgStyle = activeGen.model_settings?.backgroundStyle || "Studio";
+                
+                const fallbackPrompt = `Generate a photorealistic image of an Indian female model wearing the EXACT garment shown in the attached reference image. The model should have ${skinTone} skin tone, be in a ${modelPose} pose, and stand against a ${bgStyle} background. Full body, head to toe, professional fashion photography. The garment design, colors, patterns, and all textile details MUST match the reference image exactly.`;
+                
+                if (openRouterApiKey) {
+                  const { base64Data, mimeType } = await generateViaOpenRouter(
+                    openRouterApiKey,
+                    "google/gemini-2.5-flash-image",
+                    fallbackPrompt,
+                    originalUrl,
+                    "3:4",
+                    []
+                  );
+                  // Upload the generated image
+                  const buffer = Buffer.from(base64Data, "base64");
+                  const ext = mimeType === "image/png" ? "png" : "jpg";
+                  const filePath = `${activeGen.user_id}/${activeGen.id}_ai_model.${ext}`;
+                  const { error: uploadErr2 } = await supabase.storage
+                    .from("designs")
+                    .upload(filePath, buffer, { contentType: mimeType, upsert: true });
+                  if (!uploadErr2) {
+                    const { data: { publicUrl: aiModelUrl } } = supabase.storage
+                      .from("designs")
+                      .getPublicUrl(filePath);
+                    vtonResultUrl = aiModelUrl;
+                    console.log("AI model image generated as VTON fallback:", vtonResultUrl);
+                  }
+                }
+              } catch (aiErr) {
+                console.error("AI fallback for VTON also failed:", aiErr);
+              }
+            }
+          }
+
+          if (vtonResultUrl) {
+            console.log("Uploading VTON result to Supabase Storage to get a stable public URL...");
+            const uploadUrl = await uploadToStorage(
+              supabase,
+              vtonResultUrl,
+              activeGen.user_id,
+              `${activeGen.id}_vton_temp`
+            );
+            if (uploadUrl) {
+              modelImgUrl = uploadUrl;
+              console.log("VTON try-on image uploaded to Supabase:", modelImgUrl);
+            } else {
+              modelImgUrl = vtonResultUrl;
+              console.log("Failed to upload VTON result to Supabase, using direct URL:", modelImgUrl);
+            }
+          } else {
+            console.warn("All VTON pipelines failed, falling back to original clothing image for video animation.");
+          }
+        } catch (vtonErr) {
+          console.error("VTON step failed:", vtonErr);
+        }
+
+        // 2. Generate video from try-on image using Stable Video Diffusion Space
+        const videoTempUrl = await generateVideoViaSVD(modelImgUrl, hfToken);
+        if (!videoTempUrl) {
+          throw new Error("Failed to generate video via SVD Hugging Face Space");
+        }
+
+        // 3. Upload the generated video (.mp4) to user's Supabase storage designs bucket
+        const publicVideoUrl = await uploadVideoToStorage(
+          supabase,
+          videoTempUrl,
+          activeGen.user_id,
+          activeGen.id
+        );
+
+        if (!publicVideoUrl) {
+          throw new Error("Failed to upload generated video to storage");
+        }
+
+        // 4. Update generation record to done
+        const { data: completedGen, error: updateErr } = await supabase
+          .from("generations")
+          .update({
+            status: "done",
+            generated_image_url: publicVideoUrl,
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", id)
+          .select()
+          .single();
+
+        if (updateErr) throw updateErr;
+        console.log("SVD Video Generation completed successfully! URL:", publicVideoUrl);
+        return NextResponse.json(completedGen);
+      } catch (err: any) {
+        console.error("SVD Video generation pipeline failed:", err);
+        
+        // Reset status to failed and refund credit
+        const { data: failedGen } = await supabase
+          .from("generations")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", id)
+          .select()
+          .single();
+
+        const { data: currentCredits } = await supabase
+          .from("credits")
+          .select("balance")
+          .eq("user_id", activeGen.user_id)
+          .single();
+
+        if (currentCredits) {
+          await supabase
+            .from("credits")
+            .update({ balance: currentCredits.balance + 1 })
+            .eq("user_id", activeGen.user_id);
+        }
+
+        return NextResponse.json(failedGen || activeGen);
       }
     }
 

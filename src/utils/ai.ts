@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
+import { Client, handle_file } from "@gradio/client";
 
 // Helper to fetch an image URL and convert to base64
 export async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -481,6 +482,197 @@ Generate a high-quality, professional, photorealistic studio photograph of a mod
     console.error("Error in generatePosedModel:", error);
     return null;
   }
+}
+
+/**
+ * Extracts a video URL from a Gradio prediction result.
+ */
+function extractVideoUrl(result: any): string | null {
+  if (!result?.data) return null;
+  // Try various result shapes that different Gradio spaces return
+  for (const item of Array.isArray(result.data) ? result.data : [result.data]) {
+    const url = item?.video?.url || item?.video?.path || item?.url || item?.path;
+    if (url) return url;
+  }
+  return null;
+}
+
+/**
+ * Try a single HuggingFace SVD Space for video generation.
+ */
+async function trySVDSpace(
+  spaceId: string,
+  apiName: string,
+  args: any[],
+  hfToken?: `hf_${string}`
+): Promise<string | null> {
+  try {
+    console.log(`[SVD] Trying space: ${spaceId} (${apiName})...`);
+    const client = await Client.connect(
+      spaceId,
+      hfToken ? { token: hfToken } : {}
+    );
+    const result = (await client.predict(apiName, args)) as any;
+    const videoUrl = extractVideoUrl(result);
+    if (videoUrl) {
+      console.log(`[SVD] ✓ Video generated via ${spaceId}: ${videoUrl}`);
+      return videoUrl;
+    }
+    console.warn(`[SVD] ✗ No video output from ${spaceId}`);
+    return null;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    console.error(`[SVD] ✗ ${spaceId} failed: ${msg}`);
+    return null;
+  }
+}
+
+/**
+ * Try Replicate SVD API for video generation (requires REPLICATE_API_TOKEN).
+ */
+async function tryReplicateSVD(
+  imageUrl: string,
+  replicateToken: string
+): Promise<string | null> {
+  try {
+    console.log("[SVD] Trying Replicate stable-video-diffusion...");
+    
+    // Create prediction
+    const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${replicateToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        version: "3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438",
+        input: {
+          input_image: imageUrl,
+          video_length: "14_frames_with_svd",
+          sizing_strategy: "maintain_aspect_ratio",
+          motion_bucket_id: 127,
+          frames_per_second: 6,
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      throw new Error(`Replicate create failed: ${createRes.status}`);
+    }
+
+    const prediction = await createRes.json();
+    let predictionId = prediction.id;
+    console.log(`[SVD] Replicate prediction created: ${predictionId}`);
+
+    // Poll for completion (max 5 minutes)
+    const maxWaitMs = 5 * 60 * 1000;
+    const pollIntervalMs = 5000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+      const pollRes = await fetch(
+        `https://api.replicate.com/v1/predictions/${predictionId}`,
+        {
+          headers: { "Authorization": `Token ${replicateToken}` },
+        }
+      );
+
+      if (!pollRes.ok) continue;
+
+      const pollData = await pollRes.json();
+
+      if (pollData.status === "succeeded") {
+        const outputUrl = Array.isArray(pollData.output)
+          ? pollData.output[0]
+          : pollData.output;
+        if (outputUrl) {
+          console.log(`[SVD] ✓ Replicate video generated: ${outputUrl}`);
+          return outputUrl;
+        }
+      } else if (pollData.status === "failed" || pollData.status === "canceled") {
+        throw new Error(`Replicate prediction ${pollData.status}: ${pollData.error || "unknown"}`);
+      }
+      // else still processing, continue polling
+    }
+
+    throw new Error("Replicate SVD timed out after 5 minutes");
+  } catch (err: any) {
+    console.error(`[SVD] ✗ Replicate SVD failed: ${err?.message || err}`);
+    return null;
+  }
+}
+
+/**
+ * Generates a video from an image using multiple strategies with fallbacks.
+ * Strategy order:
+ *   1. multimodalart/stable-video-diffusion (HF Space - ZeroGPU)
+ *   2. stabilityai/stable-video-diffusion (HF Space - ZeroGPU, separate quota)
+ *   3. Replicate SVD API (paid, if token available)
+ *   4. fffiloni/stable-video-diffusion (HF Space - ZeroGPU, separate quota)
+ */
+export async function generateVideoViaSVD(
+  imageUrl: string,
+  hfToken?: `hf_${string}`
+): Promise<string | null> {
+  console.log("[SVD] Starting multi-strategy video generation...");
+  console.log("[SVD] Input image:", imageUrl);
+
+  // Strategy 1: multimodalart/stable-video-diffusion
+  const result1 = await trySVDSpace(
+    "multimodalart/stable-video-diffusion",
+    "/video",
+    [
+      handle_file(imageUrl),
+      0,    // seed
+      true, // randomize_seed
+      127,  // motion_bucket_id
+      6,    // fps_id
+    ],
+    hfToken
+  );
+  if (result1) return result1;
+
+  // Strategy 2: stabilityai/stable-video-diffusion (different Space = different quota)
+  const result2 = await trySVDSpace(
+    "stabilityai/stable-video-diffusion",
+    "/video",
+    [
+      handle_file(imageUrl),
+      0,    // seed
+      true, // randomize_seed
+      127,  // motion_bucket_id
+      6,    // fps_id
+    ],
+    hfToken
+  );
+  if (result2) return result2;
+
+  // Strategy 3: Replicate SVD (paid API, no ZeroGPU quota needed)
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  if (replicateToken) {
+    const result3 = await tryReplicateSVD(imageUrl, replicateToken);
+    if (result3) return result3;
+  }
+
+  // Strategy 4: fffiloni/stable-video-diffusion (another community Space)
+  const result4 = await trySVDSpace(
+    "fffiloni/stable-video-diffusion",
+    "/video",
+    [
+      handle_file(imageUrl),
+      0,    // seed
+      true, // randomize_seed
+      127,  // motion_bucket_id
+      6,    // fps_id
+    ],
+    hfToken
+  );
+  if (result4) return result4;
+
+  console.error("[SVD] All video generation strategies exhausted.");
+  return null;
 }
 
 
