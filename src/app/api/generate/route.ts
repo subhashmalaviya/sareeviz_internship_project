@@ -339,13 +339,54 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
-    // If both model image and pose reference are provided, generate a posed model first
-    if (pose_model_bg && additional_designs.pose_ref && !useMockMode) {
+    // Resolve relative URLs for pose_model_bg and additional_designs.pose_ref if they start with "/"
+    let resolvedPoseModelBg = pose_model_bg;
+    if (resolvedPoseModelBg && resolvedPoseModelBg.startsWith("/")) {
       try {
-        console.log("Both model and pose reference provided. Generating posed model first...");
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(process.cwd(), "public", resolvedPoseModelBg);
+        const buffer = fs.readFileSync(filePath);
+        const base64Data = buffer.toString("base64");
+        const extType = resolvedPoseModelBg.endsWith(".png") ? "image/png" : "image/webp";
+        const tempId = `temp_model_${Date.now()}`;
+        const publicUrl = await uploadBase64ToStorage(supabase, base64Data, extType, user.id, tempId);
+        if (publicUrl) {
+          resolvedPoseModelBg = publicUrl;
+          console.log("Uploaded local pose_model_bg image to Supabase:", resolvedPoseModelBg);
+        }
+      } catch (e) {
+        console.error("Failed to upload local pose_model_bg image:", e);
+      }
+    }
+
+    let resolvedPoseRef = additional_designs.pose_ref || defaultHumanImgUrl;
+    if (resolvedPoseRef && resolvedPoseRef.startsWith("/")) {
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(process.cwd(), "public", resolvedPoseRef);
+        const buffer = fs.readFileSync(filePath);
+        const base64Data = buffer.toString("base64");
+        const extType = resolvedPoseRef.endsWith(".png") ? "image/png" : "image/webp";
+        const tempId = `temp_poseref_${Date.now()}`;
+        const publicUrl = await uploadBase64ToStorage(supabase, base64Data, extType, user.id, tempId);
+        if (publicUrl) {
+          resolvedPoseRef = publicUrl;
+          console.log("Uploaded local pose_ref image to Supabase:", resolvedPoseRef);
+        }
+      } catch (e) {
+        console.error("Failed to upload local pose_ref image:", e);
+      }
+    }
+
+    // If model face/image is provided, generate a posed model first using the pose reference (either uploaded or selected default pose)
+    if (resolvedPoseModelBg && !useMockMode) {
+      try {
+        console.log("Generating posed model first with face/identity from resolvedPoseModelBg and pose from resolvedPoseRef...");
         const posedModelUrl = await generatePosedModel({
-          modelUrl: pose_model_bg,
-          poseUrl: additional_designs.pose_ref,
+          modelUrl: resolvedPoseModelBg,
+          poseUrl: resolvedPoseRef,
           userId: user.id,
           isMale: isMaleCategoryForPose,
           geminiApiKey,

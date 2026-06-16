@@ -689,6 +689,7 @@ export default function StudioPage() {
 
     let mainDesignUrl = "";
     let finalPoseModelBg = null;
+    let poseLibraryRef: string | null = null;
     let actualAiPipeline = aiPipeline;
 
     if (activeTab === "combine") {
@@ -765,7 +766,13 @@ export default function StudioPage() {
             const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
             const posePrefix = isMaleCategory ? "male_pose" : "pose";
             const poseExt = isMaleCategory ? "png" : "webp";
-            finalPoseModelBg = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
+            const poseLibUrl = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
+            if (uploads["pose_model_bg"]) {
+              // User uploaded a model face: keep it, send pose image as pose_ref
+              poseLibraryRef = poseLibUrl;
+            } else {
+              finalPoseModelBg = poseLibUrl;
+            }
           }
         } catch (err: any) {
           console.error("Auto-composition failed:", err);
@@ -784,7 +791,13 @@ export default function StudioPage() {
             const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
             const posePrefix = isMaleCategory ? "male_pose" : "pose";
             const poseExt = isMaleCategory ? "png" : "webp";
-            finalPoseModelBg = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
+            const poseLibUrl = `/poses/${posePrefix}${selectedImagePoses[0]}.${poseExt}`;
+            if (uploads["pose_model_bg"]) {
+              // User uploaded a model face: keep it, send pose image as pose_ref
+              poseLibraryRef = poseLibUrl;
+            } else {
+              finalPoseModelBg = poseLibUrl;
+            }
           }
         } catch (err: any) {
           console.error("Single generation preprocessing error:", err);
@@ -803,7 +816,12 @@ export default function StudioPage() {
       try {
         finalPoseModelBg = uploads["pose_model_bg"] || null;
         if (usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
-          finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+          const poseLibUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedImagePoses[0]}.webp`;
+          if (uploads["pose_model_bg"]) {
+            poseLibraryRef = poseLibUrl;
+          } else {
+            finalPoseModelBg = poseLibUrl;
+          }
         }
       } catch (err: any) {
         console.error("Single generation preprocessing error:", err);
@@ -824,16 +842,36 @@ export default function StudioPage() {
         const currentPoseNum = posesToRun[i];
         
         let jobPoseModelBg = finalPoseModelBg;
+        let jobPoseRef = poseLibraryRef;
         if (currentPoseNum !== null) {
           if (activeTab === "combine") {
-            jobPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${currentPoseNum}.webp`;
+            const poseUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${currentPoseNum}.webp`;
+            if (uploads["pose_model_bg"]) {
+              jobPoseModelBg = uploads["pose_model_bg"];
+              jobPoseRef = poseUrl;
+            } else {
+              jobPoseModelBg = poseUrl;
+            }
           } else if (activeTab === "image") {
             const isMaleCategory = ["man's kurta", "men's dress", "men's innerwear"].includes((generateFor || "").toLowerCase().trim());
             const posePrefix = isMaleCategory ? "male_pose" : "pose";
             const poseExt = isMaleCategory ? "png" : "webp";
-            jobPoseModelBg = `/poses/${posePrefix}${currentPoseNum}.${poseExt}`;
+            const poseUrl = `/poses/${posePrefix}${currentPoseNum}.${poseExt}`;
+            if (uploads["pose_model_bg"]) {
+              // User uploaded a model face: keep it as identity, use pose library image as pose reference
+              jobPoseModelBg = uploads["pose_model_bg"];
+              jobPoseRef = poseUrl;
+            } else {
+              jobPoseModelBg = poseUrl;
+            }
           }
         }
+
+        // Merge jobPoseRef into additional_designs so the backend uses it as the pose reference
+        const mergedAdditionalDesigns = {
+          ...uploads,
+          ...(jobPoseRef ? { pose_ref: jobPoseRef } : {})
+        };
 
         const payload = {
           generateFor: activeTab === "combine" ? "saree" : generateFor,
@@ -849,7 +887,7 @@ export default function StudioPage() {
           pose_model_bg: jobPoseModelBg,
           useMockMode: useMockMode,
           aiPipeline: actualAiPipeline,
-          additional_designs: uploads,
+          additional_designs: mergedAdditionalDesigns,
           catalogueOption: catalogueOption,
           branding: {
             brandLogo: uploads["image_brand_logo"] || null,
