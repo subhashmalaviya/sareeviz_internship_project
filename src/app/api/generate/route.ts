@@ -238,6 +238,9 @@ PHOTOGRAPHY STYLE: ${photographyStyle === "flat_lay" ? "Flat lay product photogr
 OUTPUT: A single photorealistic fashion photograph, sharp focus, professional lighting, magazine quality.`;
 
     if (generation_type === "video") {
+      const videoMode = additional_designs.video_mode || "direct";
+      const videoEngine = additional_designs.video_engine || "wan2.1";
+
       if (useMockMode) {
         // Record mock video generation
         const { data: genData, error: genError } = await supabase
@@ -265,6 +268,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
               catalogueOption,
               branding: branding || null,
               generation_type: "video",
+              pose_model_bg: pose_model_bg || null,
+              video_mode: videoMode,
+              video_engine: videoEngine,
             },
           })
           .select()
@@ -306,6 +312,9 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
               catalogueOption,
               branding: branding || null,
               generation_type: "video",
+              pose_model_bg: pose_model_bg || null,
+              video_mode: videoMode,
+              video_engine: videoEngine,
             },
           })
           .select()

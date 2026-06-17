@@ -126,6 +126,10 @@ export default function StudioPage() {
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoDuration, setVideoDuration] = useState("15s");
   const [videoAspectRatio, setVideoAspectRatio] = useState("9:16 (Reels/Shorts)");
+  const [videoMode, setVideoMode] = useState<"tryon" | "direct">("tryon");
+  const [videoEngine, setVideoEngine] = useState<"wan2.1" | "svd">("wan2.1");
+  const [videoCustomModel, setVideoCustomModel] = useState<boolean>(false);
+  const [selectedVideoPose, setSelectedVideoPose] = useState<number>(1);
 
   // Multi-Garment Try-On States
   const [combineSaree, setCombineSaree] = useState<string>("");
@@ -637,7 +641,11 @@ export default function StudioPage() {
     if (activeTab === "combine") {
       return !!(segmentedSaree && segmentedBlouse && (!isCustomModel || combineModel));
     } else if (activeTab === "video") {
-      return !!uploads["video_reference_image"];
+      if (videoMode === "tryon") {
+        return !!(uploads["video_saree_image"] && (!videoCustomModel || uploads["video_model_image"]));
+      } else {
+        return !!uploads["video_reference_image"];
+      }
     } else {
       const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
       const mainUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
@@ -661,9 +669,20 @@ export default function StudioPage() {
         return;
       }
     } else if (activeTab === "video") {
-      if (!uploads["video_reference_image"]) {
-        alert(t("Please upload a reference image for video!") || "Please upload a reference image for video!");
-        return;
+      if (videoMode === "tryon") {
+        if (!uploads["video_saree_image"]) {
+          alert(t("Please upload your Saree/Garment image first!") || "Please upload your Saree/Garment image first!");
+          return;
+        }
+        if (videoCustomModel && !uploads["video_model_image"]) {
+          alert(t("Please upload your Model image first!") || "Please upload your Model image first!");
+          return;
+        }
+      } else {
+        if (!uploads["video_reference_image"]) {
+          alert(t("Please upload a reference image for video!") || "Please upload a reference image for video!");
+          return;
+        }
       }
       if (!useMockMode && balance < 1) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
@@ -806,9 +825,17 @@ export default function StudioPage() {
         }
       }
     } else if (activeTab === "video") {
-      // Video tab uses a dedicated upload key
-      mainDesignUrl = uploads["video_reference_image"] || "";
-      finalPoseModelBg = null;
+      if (videoMode === "tryon") {
+        mainDesignUrl = uploads["video_saree_image"] || "";
+        if (videoCustomModel) {
+          finalPoseModelBg = uploads["video_model_image"] || null;
+        } else {
+          finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedVideoPose}.webp`;
+        }
+      } else {
+        mainDesignUrl = uploads["video_reference_image"] || "";
+        finalPoseModelBg = null;
+      }
     } else {
       const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
       mainDesignUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
@@ -877,7 +904,7 @@ export default function StudioPage() {
           generateFor: activeTab === "combine" ? "saree" : generateFor,
           photographyStyle,
           outputFormat,
-          aspectRatio,
+          aspectRatio: activeTab === "video" ? videoAspectRatio : aspectRatio,
           resolution,
           modelPose: activeTab === "combine" ? DEFAULT_POSES[currentPoseNum ? currentPoseNum - 1 : selectedCombinePose - 1]?.label || "Front Standing" : modelPose,
           skinTone,
@@ -887,7 +914,17 @@ export default function StudioPage() {
           pose_model_bg: jobPoseModelBg,
           useMockMode: useMockMode,
           aiPipeline: actualAiPipeline,
-          additional_designs: mergedAdditionalDesigns,
+          additional_designs: {
+            ...mergedAdditionalDesigns,
+            ...(activeTab === "video" ? {
+              video_mode: videoMode,
+              video_engine: videoEngine,
+              video_pose: selectedVideoPose,
+              video_saree_image: uploads["video_saree_image"] || "",
+              video_blouse_image: uploads["video_blouse_image"] || "",
+              video_model_image: uploads["video_model_image"] || "",
+            } : {})
+          },
           catalogueOption: catalogueOption,
           generation_type: activeTab,
           branding: {
@@ -1924,63 +1961,194 @@ export default function StudioPage() {
           </>
         ) : activeTab === "video" ? (
           <div className="space-y-6">
-            {/* Step 1: Category */}
+            {/* Step 1: Category, Mode & Engine */}
             <div className="space-y-4">
               <div className="flex items-center gap-2.5">
                 <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
                   1
                 </span>
-                <h2 className="text-base font-bold text-gray-900">{t("Category")}</h2>
+                <h2 className="text-base font-bold text-gray-900">{t("Category & Engine Settings")}</h2>
               </div>
-              <RadioGroup
-                value={videoCategory}
-                onValueChange={setVideoCategory}
-                className="grid grid-cols-2 gap-2.5"
-              >
-                {[
-                  { id: "apparel", label: t("Apparel"), icon: <ImageIcon className="h-4 w-4" /> },
-                  { id: "jewelry", label: t("Jewelry"), icon: <RefreshCcw className="h-4 w-4" /> },
-                ].map((item) => (
-                  <Label
-                    key={item.id}
-                    htmlFor={`video-${item.id}`}
-                    className={`flex items-center justify-center gap-2 border rounded-lg px-3 py-2.5 cursor-pointer text-sm transition-all ${
-                      videoCategory === item.id
-                        ? "border-pink-500 bg-pink-50/50 text-pink-600"
-                        : "border-gray-200 hover:bg-gray-50 text-gray-600"
-                    }`}
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t("Category")}</span>
+                  <RadioGroup
+                    value={videoCategory}
+                    onValueChange={setVideoCategory}
+                    className="flex gap-2"
                   >
-                    <RadioGroupItem
-                      value={item.id}
-                      id={`video-${item.id}`}
-                      className="sr-only"
-                    />
-                    {item.icon}
-                    <span className="font-semibold">{item.label}</span>
-                  </Label>
-                ))}
-              </RadioGroup>
+                    {[
+                      { id: "apparel", label: t("Apparel") },
+                      { id: "jewelry", label: t("Jewelry") },
+                    ].map((item) => (
+                      <Label
+                        key={item.id}
+                        htmlFor={`video-${item.id}`}
+                        className={`flex-1 flex items-center justify-center gap-1 border rounded-lg py-2 cursor-pointer text-xs transition-all ${
+                          videoCategory === item.id
+                            ? "border-pink-500 bg-pink-50/50 text-pink-600 font-bold"
+                            : "border-gray-200 hover:bg-gray-50 text-gray-600 bg-white"
+                        }`}
+                      >
+                        <RadioGroupItem
+                          value={item.id}
+                          id={`video-${item.id}`}
+                          className="sr-only"
+                        />
+                        <span>{item.label}</span>
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                {/* Video Generation Mode */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t("Pipeline Mode")}</span>
+                  <div className="flex gap-2 bg-white border border-gray-200 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setVideoMode("tryon")}
+                      className={`flex-1 py-1 text-xs font-bold rounded transition-all ${videoMode === "tryon" ? "bg-pink-500 text-white shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                    >
+                      {t("Try-On")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVideoMode("direct")}
+                      className={`flex-1 py-1 text-xs font-bold rounded transition-all ${videoMode === "direct" ? "bg-pink-500 text-white shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                    >
+                      {t("Direct")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Video Engine */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t("Video Engine")}</span>
+                  <div className="relative">
+                    <select
+                      value={videoEngine}
+                      onChange={(e) => setVideoEngine(e.target.value as "wan2.1" | "svd")}
+                      className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-xs text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white h-[34px]"
+                    >
+                      <option value="wan2.1">{t("Wan 2.1 (SOTA)")}</option>
+                      <option value="svd">{t("SVD (Classic)")}</option>
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 text-gray-500 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Step 2: Reference Image */}
+            {/* Step 2: Input Content */}
             <div className="space-y-4">
               <div className="flex items-center gap-2.5">
                 <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
                   2
                 </span>
-                <h2 className="text-base font-bold text-gray-900">{t("Reference Image")} <span className="text-red-500">*</span></h2>
+                <h2 className="text-base font-bold text-gray-900">
+                  {videoMode === "tryon" ? t("Garments & Model Setup") : t("Reference Image")}
+                </h2>
               </div>
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">{t("Upload an image to animate into video")}</p>
-                <UploadDesignBox
-                  label={t("Reference Image") || "Reference Image"}
-                  value={uploads["video_reference_image"] || ""}
-                  onChange={(url) => setUploads(prev => ({ ...prev, video_reference_image: url }))}
-                  placeholderText={t("Click to upload reference image or drag & drop") || "Click to upload reference image or drag & drop"}
-                  helperText={t("Upload reference image to animate") || "Upload reference image"}
-                  heightClass="h-80"
-                />
-              </div>
+
+              {videoMode === "tryon" ? (
+                <div className="space-y-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                  {/* Upload Garments */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <UploadDesignBox
+                      label={t("Upload Saree/Garment") || "Upload Saree/Garment"}
+                      value={uploads["video_saree_image"] || ""}
+                      onChange={(url) => setUploads(prev => ({ ...prev, video_saree_image: url }))}
+                      placeholderText={t("Saree Image") || "Saree Image"}
+                      helperText={t("Main saree fabric") || "Main saree fabric"}
+                      heightClass="h-32"
+                    />
+                    <UploadDesignBox
+                      label={t("Upload Blouse") || "Upload Blouse"}
+                      value={uploads["video_blouse_image"] || ""}
+                      onChange={(url) => setUploads(prev => ({ ...prev, video_blouse_image: url }))}
+                      placeholderText={t("Blouse Design (Optional)") || "Blouse Design (Optional)"}
+                      helperText={t("Blouse pattern") || "Blouse pattern"}
+                      heightClass="h-32"
+                    />
+                  </div>
+
+                  {/* Choose Model Pose */}
+                  <div className="space-y-2 border-t border-gray-100 pt-3">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t("Model Pose")}</span>
+                    
+                    <div className="flex gap-2 p-1 bg-gray-100 rounded-lg max-w-[200px] mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setVideoCustomModel(false)}
+                        className={`flex-1 py-1 text-xs font-bold rounded transition-all ${!videoCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        {t("Presets")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVideoCustomModel(true)}
+                        className={`flex-1 py-1 text-xs font-bold rounded transition-all ${videoCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        {t("Custom")}
+                      </button>
+                    </div>
+
+                    {!videoCustomModel ? (
+                      <div className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
+                        <div className="grid grid-cols-4 gap-2">
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((poseNum) => {
+                            const isSelected = selectedVideoPose === poseNum;
+                            return (
+                              <div
+                                key={poseNum}
+                                onClick={() => setSelectedVideoPose(poseNum)}
+                                className={`relative aspect-[3/4] rounded-lg overflow-hidden cursor-pointer transition-all ${
+                                  isSelected ? "ring-2 ring-pink-500 ring-offset-1" : "border border-gray-200 hover:border-gray-300"
+                                }`}
+                              >
+                                <img
+                                  src={`/poses/pose${poseNum}.webp`}
+                                  alt={`Pose ${poseNum}`}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-x-0 bottom-0 py-0.5 bg-black/60 flex justify-center z-10">
+                                  <span className="text-white text-[9px] font-semibold">
+                                    Pose {poseNum}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <UploadDesignBox
+                        label={t("Model Photo") || "Model Photo"}
+                        value={uploads["video_model_image"] || ""}
+                        onChange={(url) => setUploads(prev => ({ ...prev, video_model_image: url }))}
+                        placeholderText={t("Upload model photo") || "Upload model photo"}
+                        helperText={t("High-quality model photo") || "High-quality model photo"}
+                        heightClass="h-32"
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500">{t("Upload an image to animate into video")}</p>
+                  <UploadDesignBox
+                    label={t("Reference Image") || "Reference Image"}
+                    value={uploads["video_reference_image"] || ""}
+                    onChange={(url) => setUploads(prev => ({ ...prev, video_reference_image: url }))}
+                    placeholderText={t("Click to upload reference image or drag & drop") || "Click to upload reference image or drag & drop"}
+                    helperText={t("Upload reference image to animate") || "Upload reference image"}
+                    heightClass="h-80"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Step 3: Edit / Style Prompt */}

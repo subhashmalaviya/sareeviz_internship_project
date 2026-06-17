@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer, generateVideoViaSVD } from "@/utils/ai";
+import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer, generateVideoViaSVD, generateVideoViaWan21 } from "@/utils/ai";
 import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
 import { Client, handle_file } from "@gradio/client";
 
@@ -464,132 +464,202 @@ export async function GET(request: Request) {
       
       const activeGen = genLocked || gen;
 
-      // Run SVD pipeline
+      // Run Video pipeline
       try {
-        console.log("Starting SVD video generation pipeline...");
+        const videoMode = activeGen.model_settings?.video_mode || "direct";
+        const videoEngine = activeGen.model_settings?.video_engine || "wan2.1";
+        
+        console.log(`Starting video generation pipeline (Engine: ${videoEngine}, Mode: ${videoMode})...`);
         const hfToken = process.env.HUGGINGFACE_API_KEY as `hf_${string}` | undefined;
         const originalUrl = activeGen.original_image_url;
 
-        // 1. First run VTON (try-on) to drape clothes on a model
+        // 1. If try-on mode is selected, run VTON first to generate static model try-on image
         let modelImgUrl = originalUrl;
         
-        try {
-          console.log("Running VTON first to generate static model try-on image...");
-          const defaultHumanImgUrl = "https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose1.webp";
-          
-          const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
-          let vtonResultUrl = null;
-          
-          if (kaggleVtonUrl) {
-            try {
-              console.log("Attempting Kaggle VTON...");
-              const client = await Client.connect(kaggleVtonUrl, hfToken ? { token: hfToken } : {});
-              const result = await client.predict("/tryon", [
-                { background: handle_file(defaultHumanImgUrl), layers: [], composite: null },
-                handle_file(originalUrl),
-                activeGen.model_settings?.generateFor || "garment",
-                true,  // is_checked
-                false, // is_checked_crop
-                30,    // denoise_steps
-                42,    // seed
-              ]) as any;
-              if (result && result.data && result.data[0]) {
-                vtonResultUrl = result.data[0].url;
-              }
-            } catch (kaggleErr) {
-              console.error("Kaggle VTON in video pipeline failed:", kaggleErr);
+        if (videoMode === "tryon") {
+          try {
+            console.log("Running VTON first to generate static model try-on image...");
+            
+            // Resolve human/pose image URL
+            let humanImgUrl = activeGen.model_settings?.pose_model_bg;
+            if (!humanImgUrl) {
+              const videoPoseNum = activeGen.model_settings?.additional_designs?.video_pose || 1;
+              humanImgUrl = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${videoPoseNum}.webp`;
             }
-          }
-
-          if (!vtonResultUrl) {
-            try {
-              console.log("Attempting Kwai-Kolors VTON...");
-              const client = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { token: hfToken } : {});
-              const result = await client.predict(2, [
-                handle_file(defaultHumanImgUrl),
-                handle_file(originalUrl),
-                42,
-                true
-              ]) as any;
-              if (result && result.data && result.data[0]) {
-                vtonResultUrl = result.data[0].url;
-              }
-            } catch (kolorsErr) {
-              console.error("Kwai-Kolors VTON in video pipeline failed:", kolorsErr);
-            }
-          }
-
-          // Fallback: Use OpenRouter/Gemini to generate a model image with the garment
-          if (!vtonResultUrl) {
-            const openRouterApiKey = process.env.OPENROUTER_API_KEY;
-            const geminiApiKey = process.env.GEMINI_API_KEY;
-            if (openRouterApiKey || geminiApiKey) {
+            
+            const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
+            let vtonResultUrl = null;
+            
+            if (kaggleVtonUrl) {
               try {
-                console.log("VTON spaces exhausted. Falling back to AI image generation...");
-                const { generateViaOpenRouter } = await import("@/utils/ai");
-                const generateFor = activeGen.model_settings?.generateFor || "saree";
-                const skinTone = activeGen.model_settings?.skinTone || "Wheatish";
-                const modelPose = activeGen.model_settings?.modelPose || "Front Standing";
-                const bgStyle = activeGen.model_settings?.backgroundStyle || "Studio";
-                
-                const fallbackPrompt = `Generate a photorealistic image of an Indian female model wearing the EXACT garment shown in the attached reference image. The model should have ${skinTone} skin tone, be in a ${modelPose} pose, and stand against a ${bgStyle} background. Full body, head to toe, professional fashion photography. The garment design, colors, patterns, and all textile details MUST match the reference image exactly.`;
-                
-                if (openRouterApiKey) {
-                  const { base64Data, mimeType } = await generateViaOpenRouter(
-                    openRouterApiKey,
-                    "google/gemini-2.5-flash-image",
-                    fallbackPrompt,
-                    originalUrl,
-                    "3:4",
-                    []
-                  );
-                  // Upload the generated image
-                  const buffer = Buffer.from(base64Data, "base64");
-                  const ext = mimeType === "image/png" ? "png" : "jpg";
-                  const filePath = `${activeGen.user_id}/${activeGen.id}_ai_model.${ext}`;
-                  const { error: uploadErr2 } = await supabase.storage
-                    .from("designs")
-                    .upload(filePath, buffer, { contentType: mimeType, upsert: true });
-                  if (!uploadErr2) {
-                    const { data: { publicUrl: aiModelUrl } } = supabase.storage
-                      .from("designs")
-                      .getPublicUrl(filePath);
-                    vtonResultUrl = aiModelUrl;
-                    console.log("AI model image generated as VTON fallback:", vtonResultUrl);
+                console.log("Attempting Kaggle VTON with token...");
+                const client = await Client.connect(kaggleVtonUrl, hfToken ? { token: hfToken } : {});
+                const result = await client.predict("/tryon", [
+                  { background: handle_file(humanImgUrl), layers: [], composite: null },
+                  handle_file(originalUrl),
+                  activeGen.model_settings?.generateFor || "garment",
+                  true,  // is_checked
+                  false, // is_checked_crop
+                  30,    // denoise_steps
+                  42,    // seed
+                ]) as any;
+                if (result && result.data && result.data[0]) {
+                  vtonResultUrl = result.data[0].url;
+                }
+              } catch (kaggleErr) {
+                console.error("Kaggle VTON with token failed:", kaggleErr);
+                if (hfToken) {
+                  try {
+                    console.log("Attempting Kaggle VTON anonymously...");
+                    const client = await Client.connect(kaggleVtonUrl);
+                    const result = await client.predict("/tryon", [
+                      { background: handle_file(humanImgUrl), layers: [], composite: null },
+                      handle_file(originalUrl),
+                      activeGen.model_settings?.generateFor || "garment",
+                      true,
+                      false,
+                      30,
+                      42,
+                    ]) as any;
+                    if (result && result.data && result.data[0]) {
+                      vtonResultUrl = result.data[0].url;
+                    }
+                  } catch (kaggleAnonErr) {
+                    console.error("Kaggle VTON anonymously failed too:", kaggleAnonErr);
                   }
                 }
-              } catch (aiErr) {
-                console.error("AI fallback for VTON also failed:", aiErr);
               }
             }
-          }
 
-          if (vtonResultUrl) {
-            console.log("Uploading VTON result to Supabase Storage to get a stable public URL...");
-            const uploadUrl = await uploadToStorage(
-              supabase,
-              vtonResultUrl,
-              activeGen.user_id,
-              `${activeGen.id}_vton_temp`
-            );
-            if (uploadUrl) {
-              modelImgUrl = uploadUrl;
-              console.log("VTON try-on image uploaded to Supabase:", modelImgUrl);
-            } else {
-              modelImgUrl = vtonResultUrl;
-              console.log("Failed to upload VTON result to Supabase, using direct URL:", modelImgUrl);
+            if (!vtonResultUrl) {
+              try {
+                console.log("Attempting Kwai-Kolors VTON with token...");
+                const client = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On", hfToken ? { token: hfToken } : {});
+                const result = await client.predict(2, [
+                  handle_file(humanImgUrl),
+                  handle_file(originalUrl),
+                  42,
+                  true
+                ]) as any;
+                if (result && result.data && result.data[0]) {
+                  vtonResultUrl = result.data[0].url;
+                }
+              } catch (kolorsErr) {
+                console.error("Kwai-Kolors VTON with token failed:", kolorsErr);
+                if (hfToken) {
+                  try {
+                    console.log("Attempting Kwai-Kolors VTON anonymously...");
+                    const client = await Client.connect("Kwai-Kolors/Kolors-Virtual-Try-On");
+                    const result = await client.predict(2, [
+                      handle_file(humanImgUrl),
+                      handle_file(originalUrl),
+                      42,
+                      true
+                    ]) as any;
+                    if (result && result.data && result.data[0]) {
+                      vtonResultUrl = result.data[0].url;
+                    }
+                  } catch (kolorsAnonErr) {
+                    console.error("Kwai-Kolors VTON anonymously failed too:", kolorsAnonErr);
+                  }
+                }
+              }
             }
-          } else {
-            console.warn("All VTON pipelines failed, falling back to original clothing image for video animation.");
+
+            // Fallback: Replicate VTON
+            const replicateToken = process.env.REPLICATE_API_TOKEN;
+            if (!vtonResultUrl && replicateToken) {
+              try {
+                console.log("Attempting Replicate IDM-VTON...");
+                vtonResultUrl = await runReplicateVton(originalUrl, humanImgUrl, replicateToken);
+              } catch (replicateVtonErr) {
+                console.error("Replicate IDM-VTON in video pipeline failed:", replicateVtonErr);
+              }
+            }
+
+            // Fallback: Use OpenRouter/Gemini to generate a model image with the garment
+            if (!vtonResultUrl) {
+              const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+              const geminiApiKey = process.env.GEMINI_API_KEY;
+              if (openRouterApiKey || geminiApiKey) {
+                try {
+                  console.log("VTON spaces exhausted. Falling back to AI image generation...");
+                  const { generateViaOpenRouter } = await import("@/utils/ai");
+                  const generateFor = activeGen.model_settings?.generateFor || "saree";
+                  const skinTone = activeGen.model_settings?.skinTone || "Wheatish";
+                  const modelPose = activeGen.model_settings?.modelPose || "Front Standing";
+                  const bgStyle = activeGen.model_settings?.backgroundStyle || "Studio";
+                  
+                  const fallbackPrompt = `Generate a photorealistic image of an Indian female model wearing the EXACT garment shown in the attached reference image. The model should have ${skinTone} skin tone, be in a ${modelPose} pose, and stand against a ${bgStyle} background. Full body, head to toe, professional fashion photography. The garment design, colors, patterns, and all textile details MUST match the reference image exactly.`;
+                  
+                  if (openRouterApiKey) {
+                    const { base64Data, mimeType } = await generateViaOpenRouter(
+                      openRouterApiKey,
+                      "google/gemini-2.5-flash-image",
+                      fallbackPrompt,
+                      originalUrl,
+                      "3:4",
+                      []
+                    );
+                    // Upload the generated image
+                    const buffer = Buffer.from(base64Data, "base64");
+                    const ext = mimeType === "image/png" ? "png" : "jpg";
+                    const filePath = `${activeGen.user_id}/${activeGen.id}_ai_model.${ext}`;
+                    const { error: uploadErr2 } = await supabase.storage
+                      .from("designs")
+                      .upload(filePath, buffer, { contentType: mimeType, upsert: true });
+                    if (!uploadErr2) {
+                      const { data: { publicUrl: aiModelUrl } } = supabase.storage
+                        .from("designs")
+                        .getPublicUrl(filePath);
+                      vtonResultUrl = aiModelUrl;
+                      console.log("AI model image generated as VTON fallback:", vtonResultUrl);
+                    }
+                  }
+                } catch (aiErr) {
+                  console.error("AI fallback for VTON also failed:", aiErr);
+                }
+              }
+            }
+
+            if (vtonResultUrl) {
+              console.log("Uploading VTON result to Supabase Storage to get a stable public URL...");
+              const uploadUrl = await uploadToStorage(
+                supabase,
+                vtonResultUrl,
+                activeGen.user_id,
+                `${activeGen.id}_vton_temp`
+              );
+              if (uploadUrl) {
+                modelImgUrl = uploadUrl;
+                console.log("VTON try-on image uploaded to Supabase:", modelImgUrl);
+              } else {
+                modelImgUrl = vtonResultUrl;
+                console.log("Failed to upload VTON result to Supabase, using direct URL:", modelImgUrl);
+              }
+            } else {
+              console.warn("All VTON pipelines failed, falling back to original clothing image for video animation.");
+            }
+          } catch (vtonErr) {
+            console.error("VTON step failed:", vtonErr);
           }
-        } catch (vtonErr) {
-          console.error("VTON step failed:", vtonErr);
         }
 
-        // 2. Generate video from try-on image using Stable Video Diffusion Space
-        const videoTempUrl = await generateVideoViaSVD(modelImgUrl, hfToken);
+        // 2. Generate video based on selected video engine
+        let videoTempUrl = null;
+        if (videoEngine === "wan2.1") {
+          videoTempUrl = await generateVideoViaWan21(
+            modelImgUrl,
+            activeGen.prompt || undefined,
+            activeGen.model_settings?.aspectRatio || undefined,
+            hfToken
+          );
+        } else {
+          videoTempUrl = await generateVideoViaSVD(modelImgUrl, hfToken);
+        }
+
         if (!videoTempUrl) {
-          throw new Error("Failed to generate video via SVD Hugging Face Space");
+          throw new Error(`Failed to generate video via ${videoEngine}`);
         }
 
         // 3. Upload the generated video (.mp4) to user's Supabase storage designs bucket
@@ -617,10 +687,10 @@ export async function GET(request: Request) {
           .single();
 
         if (updateErr) throw updateErr;
-        console.log("SVD Video Generation completed successfully! URL:", publicVideoUrl);
+        console.log(`${videoEngine} Video Generation completed successfully! URL:`, publicVideoUrl);
         return NextResponse.json(completedGen);
       } catch (err: any) {
-        console.error("SVD Video generation pipeline failed:", err);
+        console.error("Video generation pipeline failed:", err);
         
         // Reset status to failed and refund credit
         const { data: failedGen } = await supabase
@@ -647,6 +717,61 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json(failedGen || activeGen);
+      }
+    }
+
+    // Helper function to run Replicate IDM-VTON synchronously
+    async function runReplicateVton(
+      garmentUrl: string,
+      humanUrl: string,
+      replicateToken: string
+    ): Promise<string | null> {
+      try {
+        console.log("[VTON] Running Replicate IDM-VTON...");
+        const response = await fetch("https://api.replicate.com/v1/predictions", {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${replicateToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            version: "0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985",
+            input: {
+              garm_img: garmentUrl,
+              human_img: humanUrl,
+              category: "dresses",
+              crop: false,
+              steps: 30,
+            },
+          }),
+        });
+
+        if (!response.ok) return null;
+        const prediction = await response.json();
+        const predictionId = prediction.id;
+
+        // Poll for 3 minutes max
+        const maxWaitMs = 3 * 60 * 1000;
+        const pollIntervalMs = 4000;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+          const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+            headers: { Authorization: `Token ${replicateToken}` },
+          });
+          if (!pollRes.ok) continue;
+          const pollData = await pollRes.json();
+          if (pollData.status === "succeeded") {
+            return Array.isArray(pollData.output) ? pollData.output[0] : pollData.output;
+          } else if (pollData.status === "failed" || pollData.status === "canceled") {
+            break;
+          }
+        }
+        return null;
+      } catch (err) {
+        console.error("Replicate VTON helper failed:", err);
+        return null;
       }
     }
 

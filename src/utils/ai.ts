@@ -507,7 +507,7 @@ async function trySVDSpace(
   hfToken?: `hf_${string}`
 ): Promise<string | null> {
   try {
-    console.log(`[SVD] Trying space: ${spaceId} (${apiName})...`);
+    console.log(`[SVD] Trying space: ${spaceId} (${apiName}) with token...`);
     const client = await Client.connect(
       spaceId,
       hfToken ? { token: hfToken } : {}
@@ -519,12 +519,27 @@ async function trySVDSpace(
       return videoUrl;
     }
     console.warn(`[SVD] ✗ No video output from ${spaceId}`);
-    return null;
   } catch (err: any) {
     const msg = err?.message || String(err);
-    console.error(`[SVD] ✗ ${spaceId} failed: ${msg}`);
-    return null;
+    console.error(`[SVD] ✗ ${spaceId} failed with token: ${msg}`);
+    
+    // Fallback: try anonymous if token was used and failed
+    if (hfToken) {
+      try {
+        console.log(`[SVD] Trying space: ${spaceId} (${apiName}) anonymously...`);
+        const client = await Client.connect(spaceId);
+        const result = (await client.predict(apiName, args)) as any;
+        const videoUrl = extractVideoUrl(result);
+        if (videoUrl) {
+          console.log(`[SVD] ✓ Video generated via ${spaceId} (anon): ${videoUrl}`);
+          return videoUrl;
+        }
+      } catch (anonErr: any) {
+        console.error(`[SVD] ✗ ${spaceId} failed anonymously too: ${anonErr?.message || anonErr}`);
+      }
+    }
   }
+  return null;
 }
 
 /**
@@ -670,9 +685,245 @@ export async function generateVideoViaSVD(
     hfToken
   );
   if (result4) return result4;
+  
+  // Strategy 5: Fall back to Wan 2.1 Space (requires fewer ZeroGPU seconds and has verified anonymous line)
+  console.log("[SVD] All SVD strategies failed. Falling back to Wan 2.1 Fast Space...");
+  const resultWan = await tryWan21Space(
+    "multimodalart/wan2-1-fast",
+    imageUrl,
+    undefined,
+    undefined,
+    hfToken
+  );
+  if (resultWan) return resultWan;
 
   console.error("[SVD] All video generation strategies exhausted.");
   return null;
 }
+
+/**
+ * Try Replicate Wan 2.1 API for video generation.
+ */
+async function tryReplicateWan21(
+  imageUrl: string,
+  prompt?: string,
+  aspectRatio?: string,
+  replicateToken?: string
+): Promise<string | null> {
+  const token = replicateToken || process.env.REPLICATE_API_TOKEN;
+  if (!token) {
+    console.error("[Wan2.1] No Replicate API token provided.");
+    return null;
+  }
+  
+  try {
+    console.log("[Wan2.1] Trying Replicate Wan 2.1 (720p)...");
+    
+    // Clean aspect ratio format (e.g. "9:16 (Reels/Shorts)" -> "9:16")
+    let cleanAspectRatio = "9:16";
+    if (aspectRatio) {
+      const match = aspectRatio.match(/^[0-9]+:[0-9]+/);
+      if (match) {
+        cleanAspectRatio = match[0];
+      }
+    }
+
+    const cleanPrompt = prompt || "A professional fashion model showcasing the outfit in a smooth, graceful movement";
+
+    const createRes = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-i2v-720p/predictions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: {
+          image: imageUrl,
+          prompt: cleanPrompt,
+          aspect_ratio: cleanAspectRatio,
+          fast_mode: "Balanced",
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      // If 720p fails, try falling back to 480p
+      console.warn(`[Wan2.1] 720p failed: ${createRes.status}. Trying 480p...`);
+      const createRes480 = await fetch("https://api.replicate.com/v1/models/wavespeedai/wan-2.1-i2v-480p/predictions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Token ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            image: imageUrl,
+            prompt: cleanPrompt,
+            aspect_ratio: cleanAspectRatio,
+            fast_mode: "Balanced",
+          },
+        }),
+      });
+      if (!createRes480.ok) {
+        throw new Error(`Replicate Wan 2.1 480p also failed: ${createRes480.status}`);
+      }
+      return await pollReplicateVideo(await createRes480.json(), token);
+    }
+
+    return await pollReplicateVideo(await createRes.json(), token);
+  } catch (err: any) {
+    console.error(`[Wan2.1] ✗ Replicate Wan 2.1 failed: ${err?.message || err}`);
+    return null;
+  }
+}
+
+async function pollReplicateVideo(prediction: any, token: string): Promise<string | null> {
+  const predictionId = prediction.id;
+  console.log(`[Wan2.1] Replicate prediction created: ${predictionId}`);
+
+  // Poll for completion (max 5 minutes)
+  const maxWaitMs = 5 * 60 * 1000;
+  const pollIntervalMs = 5000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+    const pollRes = await fetch(
+      `https://api.replicate.com/v1/predictions/${predictionId}`,
+      {
+        headers: { "Authorization": `Token ${token}` },
+      }
+    );
+
+    if (!pollRes.ok) continue;
+
+    const pollData = await pollRes.json();
+
+    if (pollData.status === "succeeded") {
+      const outputUrl = Array.isArray(pollData.output)
+        ? pollData.output[0]
+        : pollData.output;
+      if (outputUrl) {
+        console.log(`[Wan2.1] ✓ Replicate video generated: ${outputUrl}`);
+        return outputUrl;
+      }
+    } else if (pollData.status === "failed" || pollData.status === "canceled") {
+      throw new Error(`Replicate prediction ${pollData.status}: ${pollData.error || "unknown"}`);
+    }
+  }
+  throw new Error("Replicate Wan 2.1 timed out after 5 minutes");
+}
+
+/**
+ * Try a single HuggingFace Wan 2.1 Space for video generation.
+ */
+async function tryWan21Space(
+  spaceId: string,
+  imageUrl: string,
+  prompt?: string,
+  aspectRatio?: string,
+  hfToken?: `hf_${string}`
+): Promise<string | null> {
+  const cleanPrompt = prompt || "Indian female model wearing fashion clothing, walking gracefully, fashion video, cinematic motion, smooth animation";
+  
+  let width = 512;
+  let height = 896; // default for 9:16 / Portrait
+  if (aspectRatio) {
+    if (aspectRatio.includes("1:1")) {
+      width = 512;
+      height = 512;
+    } else if (aspectRatio.includes("16:9")) {
+      width = 896;
+      height = 512;
+    } else if (aspectRatio.includes("3:4") || aspectRatio.includes("2:3")) {
+      width = 512;
+      height = 768;
+    } else if (aspectRatio.includes("4:3") || aspectRatio.includes("3:2")) {
+      width = 768;
+      height = 512;
+    }
+  }
+
+  const args = [
+    handle_file(imageUrl),
+    cleanPrompt,
+    height,
+    width,
+    "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards, watermark, text, signature", // negative prompt
+    2, // duration
+    1, // guidance scale
+    4, // inference steps
+    42, // seed
+    true, // randomize seed
+  ];
+
+  try {
+    console.log(`[Wan2.1] Trying space: ${spaceId} with token...`);
+    const client = await Client.connect(
+      spaceId,
+      hfToken ? { token: hfToken } : {}
+    );
+    const result = (await client.predict("/generate_video", args)) as any;
+    const videoUrl = extractVideoUrl(result);
+    if (videoUrl) {
+      console.log(`[Wan2.1] ✓ Video generated via ${spaceId}: ${videoUrl}`);
+      return videoUrl;
+    }
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    console.error(`[Wan2.1] ✗ ${spaceId} failed with token: ${msg}`);
+
+    // Fallback: try anonymous if token was used and failed
+    if (hfToken) {
+      try {
+        console.log(`[Wan2.1] Trying space: ${spaceId} anonymously...`);
+        const client = await Client.connect(spaceId);
+        const result = (await client.predict("/generate_video", args)) as any;
+        const videoUrl = extractVideoUrl(result);
+        if (videoUrl) {
+          console.log(`[Wan2.1] ✓ Video generated via ${spaceId} (anon): ${videoUrl}`);
+          return videoUrl;
+        }
+      } catch (anonErr: any) {
+        console.error(`[Wan2.1] ✗ ${spaceId} failed anonymously too: ${anonErr?.message || anonErr}`);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Generates a video from an image using Wan 2.1 (Replicate) with fallbacks.
+ */
+export async function generateVideoViaWan21(
+  imageUrl: string,
+  prompt?: string,
+  aspectRatio?: string,
+  hfToken?: `hf_${string}`
+): Promise<string | null> {
+  console.log("[Wan2.1] Starting Wan 2.1 video generation...");
+  
+  // Strategy 1: Replicate WAN 2.1 API (paid)
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  if (replicateToken) {
+    const result = await tryReplicateWan21(imageUrl, prompt, aspectRatio, replicateToken);
+    if (result) return result;
+  }
+  
+  // Strategy 2: HuggingFace Wan 2.1 Space (free)
+  const resultSpace = await tryWan21Space(
+    "multimodalart/wan2-1-fast",
+    imageUrl,
+    prompt,
+    aspectRatio,
+    hfToken
+  );
+  if (resultSpace) return resultSpace;
+  
+  console.log("[Wan2.1] Replicate and Wan 2.1 spaces failed or unavailable. Falling back to SVD spaces...");
+  return generateVideoViaSVD(imageUrl, hfToken);
+}
+
 
 
