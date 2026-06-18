@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { enhanceImageWithGemini, restoreFaceWithCodeformer, processImageBuffer, generateVideoViaSVD, generateVideoViaWan21 } from "@/utils/ai";
 import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
 import { Client, handle_file } from "@gradio/client";
+import sharp from "sharp";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,90 @@ async function uploadToStorage(
   }
 }
 
+// Helper to fetch/load local path or remote HTTP image URL to Buffer
+async function loadImageBuffer(urlOrPath: string): Promise<Buffer> {
+  if (urlOrPath.startsWith("/")) {
+    const fs = require("fs");
+    const path = require("path");
+    const filePath = path.join(process.cwd(), "public", urlOrPath);
+    return fs.readFileSync(filePath);
+  } else if (urlOrPath.startsWith("http")) {
+    const res = await fetch(urlOrPath);
+    if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  } else {
+    // Treat as relative path fallback
+    const fs = require("fs");
+    const path = require("path");
+    const filePath = path.join(process.cwd(), "public", "/" + urlOrPath);
+    return fs.readFileSync(filePath);
+  }
+}
+
+// Helper function to create flat lay mock composite using sharp
+async function createMockFlatLay(
+  supabase: any,
+  garmentUrl: string,
+  styleRefUrl: string,
+  userId: string,
+  genId: string
+): Promise<string | null> {
+  try {
+    console.log(`Creating mock flat lay composite: garment=${garmentUrl}, styleRef=${styleRefUrl}`);
+    const garmentBuffer = await loadImageBuffer(garmentUrl);
+    const styleBuffer = await loadImageBuffer(styleRefUrl);
+
+    // Load background (styleRef) with sharp
+    const bgImage = sharp(styleBuffer);
+    const bgMetadata = await bgImage.metadata();
+    const bgWidth = bgMetadata.width || 1024;
+    const bgHeight = bgMetadata.height || 1024;
+
+    // Process garment (resize to fit inside, say, 50% of background width)
+    const targetGarmentWidth = Math.round(bgWidth * 0.50);
+    const processedGarmentBuffer = await sharp(garmentBuffer)
+      .resize(targetGarmentWidth)
+      .toBuffer();
+
+    // Get processed garment metadata to center it
+    const garmentMetadata = await sharp(processedGarmentBuffer).metadata();
+    const garmentWidth = garmentMetadata.width || targetGarmentWidth;
+    const garmentHeight = garmentMetadata.height || targetGarmentWidth;
+
+    const left = Math.round((bgWidth - garmentWidth) / 2);
+    const top = Math.round((bgHeight - garmentHeight) / 2);
+
+    // Composite garment onto background
+    const compositeBuffer = await bgImage
+      .composite([
+        {
+          input: processedGarmentBuffer,
+          top: top,
+          left: left,
+        },
+      ])
+      .toBuffer();
+
+    // Upload to Supabase storage
+    const tempId = `mock_flat_lay_${Date.now()}`;
+    const publicUrl = await uploadBufferToStorage(
+      supabase,
+      compositeBuffer,
+      userId,
+      tempId,
+      undefined,
+      undefined,
+      undefined,
+      "image/png"
+    );
+
+    return publicUrl;
+  } catch (err) {
+    console.error("Failed to create mock flat lay:", err);
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -182,6 +267,20 @@ export async function GET(request: Request) {
         let mockImageUrl = gen.model_settings?.pose_model_bg || gen.original_image_url;
         if (gen.model_settings?.generation_type === "video") {
           mockImageUrl = "/videos/video1-simple-15.mp4";
+        } else if (gen.model_settings?.photographyStyle === "flat_lay") {
+          const flatLayStyleRef = gen.model_settings?.additional_designs?.flat_lay_style_ref;
+          if (flatLayStyleRef) {
+            const compositeUrl = await createMockFlatLay(
+              supabase,
+              gen.original_image_url,
+              flatLayStyleRef,
+              gen.user_id,
+              gen.id
+            );
+            if (compositeUrl) {
+              mockImageUrl = compositeUrl;
+            }
+          }
         }
         
         // Apply branding if present in settings

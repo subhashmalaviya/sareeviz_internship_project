@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Client, handle_file } from "@gradio/client";
 import { generateViaOpenRouter, enhanceImageWithGemini, fetchImageAsBase64, restoreFaceWithCodeformer, processImageBuffer, generatePosedModel } from "@/utils/ai";
 import { applyBrandingToImageBuffer, applyBrandingToUrl } from "@/utils/branding";
+import sharp from "sharp";
 
 // Helper to upload base64 image to Supabase Storage
 async function uploadBase64ToStorage(
@@ -47,6 +48,91 @@ async function uploadBase64ToStorage(
     console.error("Supabase storage upload error:", error);
     return null;
   }
+}
+
+// Helper function to handle flat lay compositing of clothing over AI generated background
+async function handleFlatLayAndUpload(
+  supabase: any,
+  generatedBase64: string,
+  mimeType: string,
+  photographyStyle: string,
+  original_image_url: string,
+  userId: string,
+  tempId: string,
+  outputFormat?: string,
+  resolution?: string,
+  aspectRatio?: string
+): Promise<string | null> {
+  try {
+    if (photographyStyle === "flat_lay") {
+      console.log("Compositing garment onto generated flat lay background...");
+      
+      // 1. Fetch garment buffer
+      const garmentRes = await fetch(original_image_url);
+      if (!garmentRes.ok) throw new Error("Failed to fetch garment image for composite");
+      const garmentBuffer = Buffer.from(await garmentRes.arrayBuffer());
+
+      // 2. Load background buffer
+      const bgBuffer = Buffer.from(generatedBase64, "base64");
+
+      // 3. Load background with sharp to get dimensions
+      const bgImage = sharp(bgBuffer);
+      const bgMetadata = await bgImage.metadata();
+      const bgWidth = bgMetadata.width || 1024;
+      const bgHeight = bgMetadata.height || 1024;
+
+      // 4. Process garment (resize to fit inside 50% of background width)
+      const targetGarmentWidth = Math.round(bgWidth * 0.50);
+      const processedGarmentBuffer = await sharp(garmentBuffer)
+        .resize(targetGarmentWidth)
+        .toBuffer();
+
+      // Get processed garment dimensions to center it
+      const garmentMetadata = await sharp(processedGarmentBuffer).metadata();
+      const garmentWidth = garmentMetadata.width || targetGarmentWidth;
+      const garmentHeight = garmentMetadata.height || targetGarmentWidth;
+
+      const left = Math.round((bgWidth - garmentWidth) / 2);
+      const top = Math.round((bgHeight - garmentHeight) / 2);
+
+      // 5. Composite garment onto background
+      const compositeBuffer = await bgImage
+        .composite([
+          {
+            input: processedGarmentBuffer,
+            top: top,
+            left: left,
+          },
+        ])
+        .toBuffer();
+
+      // 6. Upload final composite to storage
+      return await uploadBase64ToStorage(
+        supabase,
+        compositeBuffer.toString("base64"),
+        "image/png",
+        userId,
+        tempId,
+        outputFormat,
+        resolution,
+        aspectRatio
+      );
+    }
+  } catch (err) {
+    console.error("Flat lay composite generation failed, falling back to raw generated image:", err);
+  }
+
+  // Fallback to normal upload
+  return await uploadBase64ToStorage(
+    supabase,
+    generatedBase64,
+    mimeType,
+    userId,
+    tempId,
+    outputFormat,
+    resolution,
+    aspectRatio
+  );
 }
 
 export async function POST(request: Request) {
@@ -215,8 +301,31 @@ export async function POST(request: Request) {
               ? "The garment and bottom wear should be styled and worn elegantly as a complete outfit." 
               : "The garment should be draped/worn traditionally and elegantly"));
 
-    // Build a detailed prompt for virtual try-on
-    const prompt = `You are a professional fashion photographer AI. Generate a single, high-quality, photorealistic image of an ${isMaleCategory ? "Indian male model" : "Indian female model"} ${openingInstruction}
+    // Build a detailed prompt based on photography style
+    let prompt = "";
+    if (photographyStyle === "flat_lay") {
+      let flatLayDetails = "";
+      if (additional_designs && additional_designs.flat_lay_style_ref) {
+        flatLayDetails += `\n- FLAT LAY STYLE REFERENCE: Refer to the uploaded flat lay style reference image. The generated image MUST replicate the exact environment, surface type (e.g., wooden table, marble countertop, plain fabric, concrete), studio lighting, shadows, color scheme, and props (like flowers, books, sunglasses, accessories) shown in that style reference image.`;
+      }
+
+      prompt = `You are an expert fashion product photographer. Generate a single, highly detailed, photorealistic flat lay product photograph of the ${itemNoun} shown in the main garment reference image.
+
+CRITICAL REQUIREMENTS:
+- The ${itemNoun} in the final image MUST have the exact same color, pattern, texture, fabric, and design details as the main garment reference image.
+- Do NOT change or simplify the garment design. Re-create it with pixel-level precision.
+- Strictly NO human models, faces, skin, hands, feet, or mannequins should be visible in the image. The garment should be laid flat or neatly folded on the surface.
+- Place and arrange the garment beautifully at the center or elegantly framed on the surface.${flatLayDetails}
+
+BACKGROUND & ENVIRONMENT:
+- Surface/Background: ${backgroundStyle || "Wooden table / Marble surface"}
+- Lighting: Professional product photography studio lighting, soft natural shadows.
+
+PHOTOGRAPHY STYLE: Flat lay product photography, high-end e-commerce style.
+
+OUTPUT: A single photorealistic product photograph, sharp focus, clean composition, professional lighting.`;
+    } else {
+      prompt = `You are a professional fashion photographer AI. Generate a single, high-quality, photorealistic image of an ${isMaleCategory ? "Indian male model" : "Indian female model"} ${openingInstruction}
 
 CRITICAL REQUIREMENTS:
 ${criticalRequirements}${additionalPromptDetails}
@@ -233,9 +342,34 @@ GARMENT/ITEM: ${garmentDescription}${hasBottomWear ? " paired with matching bott
 BACKGROUND: ${backgroundStyle || "Luxury Palace / Haveli"}
 - Professional studio-quality lighting with soft shadows
 
-PHOTOGRAPHY STYLE: ${photographyStyle === "flat_lay" ? "Flat lay product photography on elegant surface" : "High-end fashion editorial photography, professional model photoshoot"}
+PHOTOGRAPHY STYLE: High-end fashion editorial photography, professional model photoshoot
 
 OUTPUT: A single photorealistic fashion photograph, sharp focus, professional lighting, magazine quality.`;
+    }
+
+    let textToImagePrompt = "";
+    if (photographyStyle === "flat_lay") {
+      let flatLayDetails = "";
+      if (additional_designs && additional_designs.flat_lay_style_ref) {
+        flatLayDetails = ` The surface background, materials, lighting direction, shadows, and surrounding decorative props (like flowers, accessories, books) must match the style shown in the flat lay style reference.`;
+      }
+      
+      textToImagePrompt = `You are an expert fashion product photographer. Generate a single, highly detailed, photorealistic empty flat lay background surface for displaying clothing.
+      
+CRITICAL REQUIREMENTS:
+- Strictly generate an EMPTY surface (e.g. table, floor, marble countertop, plain concrete, white studio floor) designed for product display.
+- There must be NO clothing, shirts, dresses, kurtas, sarees, pants, or garments of any kind generated on the surface.
+- The center area of the surface MUST be clean, flat, empty, and spacious to allow placing products later.
+- Place elegant decorative props around the edges/borders of the frame (like flowers, leaves, small accessories, books, sunglasses, hangers) to style the frame beautifully.${flatLayDetails}
+
+BACKGROUND & ENVIRONMENT:
+- Surface/Background: ${backgroundStyle || "Wooden table / Marble surface"}
+- Lighting: Professional product photography studio lighting, soft natural shadows.
+
+PHOTOGRAPHY STYLE: Top-down flat lay product photography, clean composition, high-end e-commerce style.
+
+OUTPUT: A single photorealistic empty background surface, sharp focus, clean composition, professional lighting.`;
+    }
 
     if (generation_type === "video") {
       const videoMode = additional_designs.video_mode || "direct";
@@ -372,20 +506,28 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           model = "black-forest-labs/flux-2-flex";
         }
 
+        // For flat lay: generate ONLY the empty background surface, then composite garment on top
+        const flatLayMode = photographyStyle === "flat_lay" && textToImagePrompt;
+        const orPrompt = flatLayMode ? textToImagePrompt : prompt;
+        const orImageUrl = flatLayMode ? undefined : original_image_url;
+        const orAdditionalUrls = flatLayMode ? [] : additionalUrls;
+
         const { base64Data, mimeType } = await generateViaOpenRouter(
           openRouterApiKey,
           model,
-          prompt,
-          original_image_url,
+          orPrompt,
+          orImageUrl as any,
           aspectRatio,
-          additionalUrls
+          orAdditionalUrls
         );
 
         const tempId = `openrouter_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-        const publicUrl = await uploadBase64ToStorage(
+        const publicUrl = await handleFlatLayAndUpload(
           supabase,
           base64Data,
           mimeType,
+          photographyStyle,
+          original_image_url,
           user.id,
           tempId,
           outputFormat,
@@ -483,7 +625,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     }
 
     // If model face/image is provided, generate a posed model first using the pose reference (either uploaded or selected default pose)
-    if (resolvedPoseModelBg && !useMockMode) {
+    if (resolvedPoseModelBg && !useMockMode && photographyStyle !== "flat_lay") {
       try {
         console.log("Generating posed model first with face/identity from resolvedPoseModelBg and pose from resolvedPoseRef...");
         const posedModelUrl = await generatePosedModel({
@@ -506,7 +648,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
 
     // ─── STRATEGY KAGGLE: Custom IDM-VTON Pipeline (Primary Free High-Fidelity) ───
     const kaggleVtonUrl = process.env.KAGGLE_VTON_URL;
-    if (kaggleVtonUrl && !useMockMode) {
+    if (kaggleVtonUrl && !useMockMode && photographyStyle !== "flat_lay") {
       try {
         console.log("Attempting Custom Kaggle IDM-VTON API generation...");
 
@@ -563,7 +705,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     }
 
     // ─── STRATEGY KOLORS: Kwai-Kolors Virtual Try-On (Secondary Free High-Fidelity) ───
-    if (generationStatus !== "done" && !useMockMode) {
+    if (generationStatus !== "done" && !useMockMode && photographyStyle !== "flat_lay") {
       try {
         console.log("Attempting Kwai-Kolors Virtual Try-On API generation...");
 
@@ -689,69 +831,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
       }
     }
 
-    // ─── STRATEGY 0: Pollinations AI FLUX (Free, Keyless Primary) ───
-    const forcePollinations = process.env.USE_POLLINATIONS === "true";
-    if (generationStatus !== "done" && forcePollinations && !useMockMode) {
-      try {
-        console.log("Attempting primary Pollinations AI FLUX generation...");
-        let width = 1024;
-        let height = 1024;
-        const cleanAspectRatio = aspectRatio ? aspectRatio.split(" ")[0].trim() : "1:1";
-        
-        if (cleanAspectRatio === "9:16") {
-          width = 768;
-          height = 1344;
-        } else if (cleanAspectRatio === "16:9") {
-          width = 1344;
-          height = 768;
-        } else if (cleanAspectRatio === "4:3") {
-          width = 1024;
-          height = 768;
-        } else if (cleanAspectRatio === "3:4") {
-          width = 768;
-          height = 1024;
-        } else if (cleanAspectRatio === "4:5") {
-          width = 896;
-          height = 1152;
-        }
 
-        const encodedPrompt = encodeURIComponent(prompt);
-        const seed = Math.floor(Math.random() * 1000000);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=${width}&height=${height}&seed=${seed}&nologo=true`;
-
-        const pollinationsRes = await fetch(pollinationsUrl);
-        if (pollinationsRes.ok) {
-          const arrayBuffer = await pollinationsRes.arrayBuffer();
-          const base64Data = Buffer.from(arrayBuffer).toString("base64");
-          const tempId = `pollinations_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-          const publicUrl = await uploadBase64ToStorage(
-            supabase,
-            base64Data,
-            "image/png",
-            user.id,
-            tempId,
-            outputFormat,
-            resolution,
-            aspectRatio
-          );
-
-          if (publicUrl) {
-            generatedImageUrl = publicUrl;
-            generationStatus = "done";
-            generationProvider = "pollinations";
-            console.log("Primary Pollinations AI generation succeeded!");
-          } else {
-            pollinationsErrorMsg = "Failed to upload Pollinations image to storage.";
-          }
-        } else {
-          pollinationsErrorMsg = `Pollinations AI HTTP error ${pollinationsRes.status}`;
-        }
-      } catch (err: any) {
-        console.error("Primary Pollinations AI error:", err?.message || err);
-        pollinationsErrorMsg = err?.message || String(err);
-      }
-    }
 
     // ─── STRATEGY 0.5: Together AI (FLUX.1 Dev) ───
     const togetherApiKey = process.env.TOGETHER_API_KEY;
@@ -789,7 +869,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           },
           body: JSON.stringify({
             model: "black-forest-labs/FLUX.1-dev",
-            prompt: prompt,
+            prompt: textToImagePrompt || prompt,
             width: width,
             height: height,
             steps: 28,
@@ -805,10 +885,12 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             const tempId = `together_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
             // Upload to Supabase storage
-            const publicUrl = await uploadBase64ToStorage(
+            const publicUrl = await handleFlatLayAndUpload(
               supabase,
               base64Data,
               "image/png",
+              photographyStyle,
+              original_image_url,
               user.id,
               tempId,
               outputFormat,
@@ -861,7 +943,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
             },
             method: "POST",
             body: JSON.stringify({
-              inputs: prompt,
+              inputs: textToImagePrompt || prompt,
               parameters: { width, height },
             }),
           }
@@ -872,10 +954,12 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           const base64Data = Buffer.from(arrayBuffer).toString("base64");
           const tempId = `hf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-          const publicUrl = await uploadBase64ToStorage(
+          const publicUrl = await handleFlatLayAndUpload(
             supabase,
             base64Data,
             "image/jpeg",
+            photographyStyle,
+            original_image_url,
             user.id,
             tempId,
             outputFormat,
@@ -905,108 +989,151 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     // ─── STRATEGY 1: Gemini API (Free, Primary) or OpenRouter Gemini fallback ───
     if (generationStatus !== "done" && !useMockMode && (geminiApiKey || openRouterApiKey)) {
       try {
+        // For flat lay: generate ONLY the empty background surface, then composite garment on top
+        const isFlatLayGemini = photographyStyle === "flat_lay" && textToImagePrompt;
+
         if (geminiApiKey) {
-          console.log("Attempting direct Gemini API generation...");
+          try {
+            console.log("Attempting direct Gemini API generation...");
 
-          // Fetch the uploaded garment image as base64
-          const garmentImage = await fetchImageAsBase64(original_image_url);
-          if (!garmentImage) {
-            throw new Error("Failed to fetch garment image for Gemini");
-          }
+            const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+            const contents: any[] = [];
 
-          const contents: any[] = [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: garmentImage.mimeType,
-                data: garmentImage.data,
-              },
-            },
-          ];
+            if (isFlatLayGemini) {
+              // Flat lay: text-only prompt for empty surface, NO garment image
+              console.log("Flat lay mode: generating empty background surface only (no garment image sent to AI)...");
+              contents.push({ text: textToImagePrompt });
 
-          // Fetch and append all other supplementary design images to contents for multi-modal context
-          if (additional_designs) {
-            for (const [key, value] of Object.entries(additional_designs)) {
-              if (value && typeof value === "string" && value.startsWith("http") && key !== `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`) {
+              // Only include the style reference image if provided
+              if (additional_designs?.flat_lay_style_ref) {
                 try {
-                  console.log(`Fetching additional design image [${key}] for Gemini input: ${value}`);
-                  const img = await fetchImageAsBase64(value);
-                  if (img) {
+                  const styleRefImg = await fetchImageAsBase64(additional_designs.flat_lay_style_ref);
+                  if (styleRefImg) {
                     contents.push({
                       inlineData: {
-                        mimeType: img.mimeType,
-                        data: img.data
-                      }
+                        mimeType: styleRefImg.mimeType,
+                        data: styleRefImg.data,
+                      },
                     });
                   }
                 } catch (e) {
-                  console.error(`Failed to fetch additional design image [${key}] for Gemini:`, e);
+                  console.error("Failed to fetch flat lay style ref for Gemini:", e);
+                }
+              }
+            } else {
+              // Normal mode: send garment image + full prompt
+              const garmentImage = await fetchImageAsBase64(original_image_url);
+              if (!garmentImage) {
+                throw new Error("Failed to fetch garment image for Gemini");
+              }
+
+              contents.push(
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: garmentImage.mimeType,
+                    data: garmentImage.data,
+                  },
+                }
+              );
+
+              // Fetch and append all other supplementary design images to contents for multi-modal context
+              if (additional_designs) {
+                for (const [key, value] of Object.entries(additional_designs)) {
+                  if (value && typeof value === "string" && value.startsWith("http") && key !== `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`) {
+                    try {
+                      console.log(`Fetching additional design image [${key}] for Gemini input: ${value}`);
+                      const img = await fetchImageAsBase64(value);
+                      if (img) {
+                        contents.push({
+                          inlineData: {
+                            mimeType: img.mimeType,
+                            data: img.data
+                          }
+                        });
+                      }
+                    } catch (e) {
+                      console.error(`Failed to fetch additional design image [${key}] for Gemini:`, e);
+                    }
+                  }
                 }
               }
             }
-          }
 
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-image",
-            contents: contents,
-            config: {
-              responseModalities: ["TEXT", "IMAGE"],
-            },
-          });
+            const response = await ai.models.generateContent({
+              model: "gemini-2.5-flash-image",
+              contents: contents,
+              config: {
+                responseModalities: ["TEXT", "IMAGE"],
+              },
+            });
 
-          // Extract the generated image from the response
-          if (response.candidates && response.candidates[0]?.content?.parts) {
-            for (const part of response.candidates[0].content.parts) {
-              if (part.inlineData && part.inlineData.data) {
-                // We got an image back from Gemini!
-                const mimeType = part.inlineData.mimeType || "image/png";
+            // Extract the generated image from the response
+            if (response.candidates && response.candidates[0]?.content?.parts) {
+              for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                  // We got an image back from Gemini!
+                  const mimeType = part.inlineData.mimeType || "image/png";
 
-                // Generate a temporary ID for storage
-                const tempId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+                  // Generate a temporary ID for storage
+                  const tempId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-                // Upload to Supabase storage
-                const publicUrl = await uploadBase64ToStorage(
-                  supabase,
-                  part.inlineData.data,
-                  mimeType,
-                  user.id,
-                  tempId,
-                  outputFormat,
-                  resolution,
-                  aspectRatio
-                );
+                  // For flat lay: composite garment onto the generated empty background
+                  const publicUrl = await handleFlatLayAndUpload(
+                    supabase,
+                    part.inlineData.data,
+                    mimeType,
+                    photographyStyle,
+                    original_image_url,
+                    user.id,
+                    tempId,
+                    outputFormat,
+                    resolution,
+                    aspectRatio
+                  );
 
-                if (publicUrl) {
-                  generatedImageUrl = publicUrl;
-                  generationStatus = "done";
-                  generationProvider = "gemini";
-                  console.log("Gemini generation succeeded!");
+                  if (publicUrl) {
+                    generatedImageUrl = publicUrl;
+                    generationStatus = "done";
+                    generationProvider = "gemini";
+                    console.log("Gemini generation succeeded!");
+                  }
+                  break; // Use the first image
                 }
-                break; // Use the first image
               }
             }
+          } catch (directErr: any) {
+            console.error("Direct Gemini generation error, falling back to OpenRouter:", directErr?.message || directErr);
+            geminiErrorMsg = directErr?.message || String(directErr);
           }
         }
 
         // If direct Gemini wasn't attempted or failed, and OpenRouter is available, try OpenRouter Gemini
         if (generationStatus !== "done" && openRouterApiKey) {
           console.log("Attempting OpenRouter Gemini generation as fallback...");
+
+          // For flat lay: generate ONLY the empty background surface, then composite garment on top
+          const orFallbackPrompt = isFlatLayGemini ? textToImagePrompt : prompt;
+          const orFallbackImageUrl = isFlatLayGemini ? undefined : original_image_url;
+          const orFallbackAdditionalUrls = isFlatLayGemini ? [] : additionalUrls;
+
           const { base64Data, mimeType } = await generateViaOpenRouter(
             openRouterApiKey,
             "google/gemini-2.5-flash-image",
-            prompt,
-            original_image_url,
+            orFallbackPrompt,
+            orFallbackImageUrl as any,
             aspectRatio,
-            additionalUrls
+            orFallbackAdditionalUrls
           );
 
           const tempId = `gemini_or_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-          const publicUrl = await uploadBase64ToStorage(
+          const publicUrl = await handleFlatLayAndUpload(
             supabase,
             base64Data,
             mimeType,
+            photographyStyle,
+            original_image_url,
             user.id,
             tempId,
             outputFormat,
@@ -1033,7 +1160,7 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
     }
 
     // ─── STRATEGY 2: Replicate IDM-VTON (Paid Fallback) ───
-    if (generationStatus !== "done" && !useMockMode) {
+    if (generationStatus !== "done" && !useMockMode && photographyStyle !== "flat_lay") {
       const replicateToken = process.env.REPLICATE_API_TOKEN;
       if (replicateToken) {
         try {
@@ -1133,6 +1260,71 @@ OUTPUT: A single photorealistic fashion photograph, sharp focus, professional li
           console.error("Replicate error:", err);
           replicateErrorMsg = err?.message || String(err);
         }
+      }
+    }
+
+    // ─── STRATEGY 2.5: Pollinations AI FLUX (Free, Keyless Ultimate Fallback) ───
+    if (generationStatus !== "done" && !useMockMode) {
+      try {
+        console.log("Attempting keyless fallback: Pollinations AI FLUX generation...");
+        let width = 1024;
+        let height = 1024;
+        const cleanAspectRatio = aspectRatio ? aspectRatio.split(" ")[0].trim() : "1:1";
+        
+        if (cleanAspectRatio === "9:16") {
+          width = 768;
+          height = 1344;
+        } else if (cleanAspectRatio === "16:9") {
+          width = 1344;
+          height = 768;
+        } else if (cleanAspectRatio === "4:3") {
+          width = 1024;
+          height = 768;
+        } else if (cleanAspectRatio === "3:4") {
+          width = 768;
+          height = 1024;
+        } else if (cleanAspectRatio === "4:5") {
+          width = 896;
+          height = 1152;
+        }
+
+        const encodedPrompt = encodeURIComponent(textToImagePrompt || prompt);
+        const seed = Math.floor(Math.random() * 1000000);
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=${width}&height=${height}&seed=${seed}&nologo=true`;
+
+        const pollinationsRes = await fetch(pollinationsUrl);
+        if (pollinationsRes.ok) {
+          const arrayBuffer = await pollinationsRes.arrayBuffer();
+          const base64Data = Buffer.from(arrayBuffer).toString("base64");
+          const tempId = `pollinations_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+          const publicUrl = await handleFlatLayAndUpload(
+            supabase,
+            base64Data,
+            "image/png",
+            photographyStyle,
+            original_image_url,
+            user.id,
+            tempId,
+            outputFormat,
+            resolution,
+            aspectRatio
+          );
+
+          if (publicUrl) {
+            generatedImageUrl = publicUrl;
+            generationStatus = "done";
+            generationProvider = "pollinations";
+            console.log("Keyless fallback: Pollinations AI generation succeeded!");
+          } else {
+            pollinationsErrorMsg = "Failed to upload Pollinations image to storage.";
+          }
+        } else {
+          pollinationsErrorMsg = `Pollinations AI HTTP error ${pollinationsRes.status}`;
+        }
+      } catch (err: any) {
+        console.error("Keyless fallback: Pollinations AI error:", err?.message || err);
+        pollinationsErrorMsg = err?.message || String(err);
       }
     }
 

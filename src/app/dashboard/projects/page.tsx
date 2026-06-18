@@ -12,7 +12,9 @@ import {
   Eye, 
   Sparkles, 
   Calendar,
-  X
+  X,
+  PlayCircle,
+  Video
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -181,6 +183,7 @@ export default function ProjectsPage() {
           {filteredGenerations.map(project => {
             const hasOutput = project.status === "done" && project.generated_image_url;
             const displayImg = hasOutput ? project.generated_image_url : project.original_image_url;
+            const isVideo = displayImg?.includes(".mp4") || displayImg?.includes("/videos/") || project.model_settings?.generation_type === "video";
             const styleSelected = project.model_settings?.photography_style || "Model Photography";
             const dateStr = new Date(project.created_at).toLocaleDateString("en-IN", {
               day: "numeric",
@@ -196,11 +199,32 @@ export default function ProjectsPage() {
                 {/* Visual Thumbnail Layer */}
                 <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden shrink-0">
                   {displayImg ? (
-                    <img 
-                      src={displayImg} 
-                      alt="Project Garment" 
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    />
+                    isVideo ? (
+                      <div className="w-full h-full relative bg-gray-900">
+                        <video
+                          src={`${displayImg}#t=0.1`}
+                          className="w-full h-full object-cover opacity-80 transition-transform duration-300 group-hover:scale-105"
+                          preload="metadata"
+                          muted
+                          playsInline
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <PlayCircle className="h-12 w-12 text-white drop-shadow-lg opacity-90 group-hover:scale-110 transition-transform" />
+                        </div>
+                        <div className="absolute top-3 right-3 z-10">
+                          <span className="px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-500/90 text-white backdrop-blur-md flex items-center gap-1">
+                            <Video className="h-3 w-3" />
+                            Video
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <img 
+                        src={displayImg} 
+                        alt="Project Garment" 
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    )
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-4">
                       <AlertCircle className="h-8 w-8 text-gray-300 mb-2" />
@@ -213,15 +237,15 @@ export default function ProjectsPage() {
                     <button 
                       onClick={() => setLightboxImage(displayImg)}
                       className="p-2 rounded-xl bg-white/95 text-gray-900 hover:bg-white shadow-sm hover:scale-105 transition-all"
-                      title="Quick View"
+                      title={isVideo ? "Play Video" : "Quick View"}
                     >
-                      <Eye className="h-4 w-4" />
+                      {isVideo ? <PlayCircle className="h-4 w-4 text-pink-600" /> : <Eye className="h-4 w-4" />}
                     </button>
                     <div className="flex gap-2">
                       {hasOutput && (
                         <a 
                           href={project.generated_image_url} 
-                          download={`sareeviz-gen-${project.id}.png`}
+                          download={`sareeviz-gen-${project.id}.${isVideo ? "mp4" : "png"}`}
                           target="_blank"
                           rel="noreferrer"
                           className="p-2 rounded-xl bg-white/95 text-gray-900 hover:bg-white shadow-sm hover:scale-105 transition-all"
@@ -309,7 +333,7 @@ export default function ProjectsPage() {
         >
           <button 
             onClick={() => setLightboxImage(null)}
-            className="absolute top-5 right-5 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors shadow-md border border-white/10"
+            className="absolute top-5 right-5 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors shadow-md border border-white/10 z-10"
           >
             <X className="h-6 w-6" />
           </button>
@@ -318,11 +342,20 @@ export default function ProjectsPage() {
             onClick={(e) => e.stopPropagation()}
             className="relative max-w-3xl w-full max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl bg-black border border-white/5"
           >
-            <img 
-              src={lightboxImage} 
-              alt="High Resolution Preview" 
-              className="w-auto max-w-full max-h-[85vh] mx-auto object-contain"
-            />
+            {lightboxImage.includes(".mp4") || lightboxImage.includes("/videos/") ? (
+              <video 
+                src={lightboxImage} 
+                controls
+                autoPlay
+                className="w-auto max-w-full max-h-[85vh] mx-auto object-contain"
+              />
+            ) : (
+              <img 
+                src={lightboxImage} 
+                alt="High Resolution Preview" 
+                className="w-auto max-w-full max-h-[85vh] mx-auto object-contain"
+              />
+            )}
           </div>
         </div>
       )}
