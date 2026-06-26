@@ -51,6 +51,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { UploadDesignBox } from "@/components/dashboard/UploadDesignBox";
 import { createClient } from "@/utils/supabase/client";
 import { useEffect } from "react";
+import { io } from "socket.io-client";
 
 const DEFAULT_POSES = [
   { id: 1, label: "Front Standing", desc: "FULL body head to toe. Strictly Standing naturally with weight casually shifted to one side, looking at camera with a warm, genuine smile. Arms loose or one hand gently on hip. Effortless and authentic." },
@@ -137,6 +138,209 @@ export default function StudioPage() {
   const [combineModel, setCombineModel] = useState<string>("");
   const [isCustomModel, setIsCustomModel] = useState<boolean>(false);
   const [selectedCombinePose, setSelectedCombinePose] = useState<number>(1);
+
+  const [hasMounted, setHasMounted] = useState(false);
+
+  // Load state from localStorage on mount (only client-side)
+  useEffect(() => {
+    try {
+      const savedActiveTab = localStorage.getItem("sareeviz_activeTab");
+      if (savedActiveTab) setActiveTab(savedActiveTab as any);
+
+      const savedUploads = localStorage.getItem("sareeviz_uploads");
+      if (savedUploads) setUploads(JSON.parse(savedUploads));
+
+      const savedGenerateFor = localStorage.getItem("sareeviz_generateFor");
+      if (savedGenerateFor) setGenerateFor(savedGenerateFor);
+
+      const savedModelPose = localStorage.getItem("sareeviz_modelPose");
+      if (savedModelPose) setModelPose(savedModelPose);
+
+      const savedSkinTone = localStorage.getItem("sareeviz_skinTone");
+      if (savedSkinTone) setSkinTone(savedSkinTone);
+
+      const savedBackgroundStyle = localStorage.getItem("sareeviz_backgroundStyle");
+      if (savedBackgroundStyle) setBackgroundStyle(savedBackgroundStyle);
+
+      const savedSareeColourHint = localStorage.getItem("sareeviz_sareeColourHint");
+      if (savedSareeColourHint) setSareeColourHint(savedSareeColourHint);
+
+      const savedCatalogueOption = localStorage.getItem("sareeviz_catalogueOption");
+      if (savedCatalogueOption) setCatalogueOption(savedCatalogueOption);
+
+      const savedPhotographyStyle = localStorage.getItem("sareeviz_photographyStyle");
+      if (savedPhotographyStyle) setPhotographyStyle(savedPhotographyStyle);
+
+      const savedOutputFormat = localStorage.getItem("sareeviz_outputFormat");
+      if (savedOutputFormat) setOutputFormat(savedOutputFormat);
+
+      const savedUsePoseLibrary = localStorage.getItem("sareeviz_usePoseLibrary");
+      if (savedUsePoseLibrary) setUsePoseLibrary(savedUsePoseLibrary === "true");
+
+      const savedRightTab = localStorage.getItem("sareeviz_rightTab");
+      if (savedRightTab) setRightTab(savedRightTab as any);
+
+      const savedCurrentGenId = localStorage.getItem("sareeviz_currentGenId");
+      if (savedCurrentGenId) setCurrentGenId(savedCurrentGenId);
+    } catch (e) {
+      console.error("Error restoring state from localStorage", e);
+    }
+    setHasMounted(true);
+  }, []);
+
+  // Save state to localStorage on changes
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_activeTab", activeTab);
+    }
+  }, [activeTab, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_uploads", JSON.stringify(uploads));
+    }
+  }, [uploads, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_generateFor", generateFor);
+    }
+  }, [generateFor, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_modelPose", modelPose);
+    }
+  }, [modelPose, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_skinTone", skinTone);
+    }
+  }, [skinTone, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_backgroundStyle", backgroundStyle);
+    }
+  }, [backgroundStyle, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_sareeColourHint", sareeColourHint);
+    }
+  }, [sareeColourHint, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_catalogueOption", catalogueOption);
+    }
+  }, [catalogueOption, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_photographyStyle", photographyStyle);
+    }
+  }, [photographyStyle, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_outputFormat", outputFormat);
+    }
+  }, [outputFormat, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_usePoseLibrary", String(usePoseLibrary));
+    }
+  }, [usePoseLibrary, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_rightTab", rightTab);
+    }
+  }, [rightTab, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      if (currentGenId) {
+        localStorage.setItem("sareeviz_currentGenId", currentGenId);
+      } else {
+        localStorage.removeItem("sareeviz_currentGenId");
+      }
+    }
+  }, [currentGenId, hasMounted]);
+
+  // Socket.io client setup
+  useEffect(() => {
+    let socket: any;
+
+    const setupSocket = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Connect to the Socket.io server
+      socket = io(window.location.origin);
+
+      socket.on("connect", () => {
+        console.log("[Socket.io] Connected to server, ID:", socket.id);
+        socket.emit("join-user", user.id);
+      });
+
+      socket.on("generation-updated", (updatedGen: any) => {
+        console.log("[Socket.io] Received generation update:", updatedGen);
+        
+        setRecentGenerations((prev) => {
+          const index = prev.findIndex((g) => g.id === updatedGen.id);
+          if (index !== -1) {
+            const nextGens = [...prev];
+            nextGens[index] = updatedGen;
+            return nextGens;
+          } else {
+            return [updatedGen, ...prev.slice(0, 9)];
+          }
+        });
+
+        if (updatedGen.status === "done" || updatedGen.status === "failed") {
+          fetchDashboardData();
+        }
+      });
+    };
+
+    setupSocket();
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, []);
+
+  // Sync isGenerating based on pending generations in DB
+  useEffect(() => {
+    const hasActive = recentGenerations.some(
+      (g) => g.status === "pending" || g.status === "processing"
+    );
+    if (hasActive) {
+      setIsGenerating(true);
+    } else {
+      setIsGenerating(false);
+    }
+  }, [recentGenerations]);
+
   const [isSegmenting, setIsSegmenting] = useState<boolean>(false);
   const [segmentingStatus, setSegmentingStatus] = useState<string>("");
   const [segmentedSaree, setSegmentedSaree] = useState<string>("");
