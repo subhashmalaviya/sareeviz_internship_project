@@ -221,6 +221,228 @@ async function createMockFlatLay(
   }
 }
 
+async function segmentImageWithReplicate(imageUrl: string, replicateToken: string): Promise<string> {
+  console.log(`[Segmentation] Starting rembg for: ${imageUrl}`);
+  const response = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Token ${replicateToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: "fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003",
+      input: {
+        image: imageUrl
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Replicate segmentation failed: ${errText}`);
+  }
+
+  let prediction = await response.json();
+  const predictionId = prediction.id;
+  let status = prediction.status;
+  let attempts = 0;
+  
+  while (status !== "succeeded" && status !== "failed" && status !== "canceled" && attempts < 30) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+      headers: {
+        "Authorization": `Token ${replicateToken}`,
+      },
+    });
+
+    if (pollRes.ok) {
+      prediction = await pollRes.json();
+      status = prediction.status;
+    }
+    attempts++;
+  }
+
+  if (status !== "succeeded") {
+    throw new Error(`Segmentation timed out or failed with status: ${status}`);
+  }
+
+  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  if (!outputUrl) {
+    throw new Error("No output URL returned from Replicate segmentation");
+  }
+  return outputUrl;
+}
+
+async function createCombineCollage(
+  supabase: any,
+  combineImages: string[],
+  backgroundImageUrl: string | null,
+  userId: string,
+  genId: string,
+  isMock: boolean,
+  outputFormat?: string,
+  resolution?: string,
+  aspectRatio?: string
+): Promise<string | null> {
+  try {
+    console.log(`[Combine] Starting collage creation for user ${userId}. Images count: ${combineImages.length}`);
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
+
+    // 1. Process background image or create default one
+    let bgWidth = 1200;
+    let bgHeight = 800;
+    let bgImage: any;
+    let bgBuffer: Buffer;
+
+    if (backgroundImageUrl) {
+      try {
+        bgBuffer = await loadImageBuffer(backgroundImageUrl);
+        const bgMetadata = await sharp(bgBuffer).metadata();
+        bgWidth = bgMetadata.width || 1200;
+        bgHeight = bgMetadata.height || 800;
+        bgImage = sharp(bgBuffer);
+      } catch (bgErr) {
+        console.error("[Combine] Failed to load background image, falling back to neutral canvas:", bgErr);
+        bgBuffer = await sharp({
+          create: {
+            width: bgWidth,
+            height: bgHeight,
+            channels: 4,
+            background: { r: 243, g: 244, b: 246, alpha: 1 }
+          }
+        }).png().toBuffer();
+        bgImage = sharp(bgBuffer);
+      }
+    } else {
+      bgBuffer = await sharp({
+        create: {
+          width: bgWidth,
+          height: bgHeight,
+          channels: 4,
+          background: { r: 243, g: 244, b: 246, alpha: 1 }
+        }
+      }).png().toBuffer();
+      bgImage = sharp(bgBuffer);
+    }
+
+    // 2. Fetch and segment model images
+    const processedModelBuffers: Buffer[] = [];
+    const modelMetadatas: { width: number; height: number }[] = [];
+
+    for (const imgUrl of combineImages) {
+      try {
+        let activeUrl = imgUrl;
+        if (!isMock && replicateToken) {
+          try {
+            activeUrl = await segmentImageWithReplicate(imgUrl, replicateToken);
+          } catch (segErr) {
+            console.error(`[Combine] Segmentation failed for ${imgUrl}, using original image:`, segErr);
+          }
+        }
+
+        const modelBuf = await loadImageBuffer(activeUrl);
+        const metadata = await sharp(modelBuf).metadata();
+        processedModelBuffers.push(modelBuf);
+        modelMetadatas.push({
+          width: metadata.width || 800,
+          height: metadata.height || 1200
+        });
+      } catch (imgErr) {
+        console.error(`[Combine] Failed to process image ${imgUrl}:`, imgErr);
+      }
+    }
+
+    if (processedModelBuffers.length === 0) {
+      throw new Error("No model images could be loaded/processed");
+    }
+
+    // 3. Layout models based on Grid logic
+    let rows = 1;
+    let rowLayout: number[][] = []; // indices of images in each row
+
+    if (processedModelBuffers.length <= 3) {
+      rows = 1;
+      rowLayout = [Array.from({ length: processedModelBuffers.length }, (_, i) => i)];
+    } else if (processedModelBuffers.length === 4) {
+      rows = 2;
+      rowLayout = [[0, 1], [2, 3]];
+    } else if (processedModelBuffers.length === 5) {
+      rows = 2;
+      rowLayout = [[0, 1, 2], [3, 4]];
+    } else if (processedModelBuffers.length === 6) {
+      rows = 2;
+      rowLayout = [[0, 1, 2], [3, 4, 5]];
+    }
+
+    const rowHeight = Math.round(bgHeight / rows);
+    const composites: any[] = [];
+
+    for (let r = 0; r < rowLayout.length; r++) {
+      const itemIndices = rowLayout[r];
+      const targetModelHeightInRow = Math.round(rowHeight * 0.9);
+      
+      const scaledWidths: number[] = [];
+      for (const idx of itemIndices) {
+        const meta = modelMetadatas[idx];
+        const scaledWidth = Math.round(meta.width * (targetModelHeightInRow / meta.height));
+        scaledWidths.push(scaledWidth);
+      }
+
+      const totalWidth = scaledWidths.reduce((sum, w) => sum + w, 0);
+
+      let finalModelHeight = targetModelHeightInRow;
+      let finalWidths = [...scaledWidths];
+      if (totalWidth > bgWidth * 0.95) {
+        const scaleFactor = (bgWidth * 0.95) / totalWidth;
+        finalModelHeight = Math.round(targetModelHeightInRow * scaleFactor);
+        finalWidths = scaledWidths.map(w => Math.round(w * scaleFactor));
+      }
+
+      const finalTotalWidth = finalWidths.reduce((sum, w) => sum + w, 0);
+      let currentX = Math.round((bgWidth - finalTotalWidth) / 2);
+      const bottomY = (r + 1) * rowHeight;
+      const topOffset = bottomY - finalModelHeight - Math.round(rowHeight * 0.05);
+
+      for (let i = 0; i < itemIndices.length; i++) {
+        const idx = itemIndices[i];
+        const resizedModel = await sharp(processedModelBuffers[idx])
+          .resize({ height: finalModelHeight })
+          .toBuffer();
+
+        composites.push({
+          input: resizedModel,
+          top: topOffset,
+          left: currentX
+        });
+
+        currentX += finalWidths[i];
+      }
+    }
+
+    // 4. Perform composition
+    const compositeBuffer = await bgImage
+      .composite(composites)
+      .toBuffer();
+
+    // 5. Upload to Supabase Storage
+    const publicUrl = await uploadBufferToStorage(
+      supabase,
+      compositeBuffer,
+      userId,
+      genId,
+      outputFormat,
+      resolution,
+      aspectRatio,
+      "image/png"
+    );
+
+    return publicUrl;
+  } catch (err: any) {
+    console.error("[Combine] createCombineCollage failed:", err);
+    return null;
+  }
+}
+
 // Helper to upload a branded buffer to Supabase Storage
 async function uploadBufferToStorage(
   supabase: any,
@@ -431,10 +653,48 @@ async function runImageBackground(
     additional_designs = {},
     catalogueOption = "display_rack",
     branding,
+    generation_type,
+    combine_images,
+    background_image,
   } = body;
 
   try {
-    if (isMockMode) {
+    if (generation_type === "combine") {
+      if (isMockMode) {
+        await new Promise((r) => setTimeout(r, 6000));
+      }
+      const compositeUrl = await createCombineCollage(
+        supabase,
+        combine_images || [],
+        background_image || null,
+        userId,
+        genId,
+        isMockMode,
+        outputFormat,
+        resolution,
+        aspectRatio
+      );
+
+      if (!compositeUrl) {
+        throw new Error("Failed to create combine collage image");
+      }
+
+      let finalImageUrl = compositeUrl;
+      // Apply branding
+      if (branding && (branding.brandLogo || branding.brandName || branding.designNumber)) {
+        try {
+          const finalBuffer = await applyBrandingToUrl(finalImageUrl, branding);
+          const brandedUrl = await uploadBufferToStorage(supabase, finalBuffer, userId, `combine_branded_${Date.now()}`, outputFormat, resolution, aspectRatio);
+          if (brandedUrl) finalImageUrl = brandedUrl;
+        } catch (e) {
+          console.error("Combine branding failed:", e);
+        }
+      }
+
+      generatedImageUrl = finalImageUrl;
+      generationStatus = "done";
+      generationProvider = isMockMode ? "mock" : "replicate_combine";
+    } else if (isMockMode) {
       // Wait for mock delay
       await new Promise((r) => setTimeout(r, 8000));
       
@@ -1295,13 +1555,24 @@ export async function POST(request: Request) {
       catalogueOption = "display_rack",
       branding,
       generation_type,
+      combine_images,
+      background_image,
     } = body;
 
-    if (!original_image_url) {
-      return NextResponse.json(
-        { error: "Please upload your main design first!" },
-        { status: 400 }
-      );
+    if (generation_type === "combine") {
+      if (!combine_images || !Array.isArray(combine_images) || combine_images.length < 2) {
+        return NextResponse.json(
+          { error: "Please upload at least 2 model photos!" },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (!original_image_url) {
+        return NextResponse.json(
+          { error: "Please upload your main design first!" },
+          { status: 400 }
+        );
+      }
     }
 
     let { data: credits, error: creditsErr } = await supabase
@@ -1496,20 +1767,20 @@ OUTPUT: A single photorealistic empty background surface, sharp focus, clean com
 
       return NextResponse.json(genData);
     } else {
-      // Normal Image Generation
+      // Normal Image or Combine Generation
       const { data: genData, error: genError } = await supabase
         .from("generations")
         .insert({
           user_id: user.id,
           status: "pending",
           prompt,
-          original_image_url,
+          original_image_url: generation_type === "combine" ? combine_images[0] : original_image_url,
           generated_image_url: null,
           model_settings: {
             ...body,
             provider: "pending",
             is_mock: useMockMode || false,
-            generation_type: "image"
+            generation_type: generation_type || "image"
           }
         })
         .select()
@@ -1537,10 +1808,10 @@ OUTPUT: A single photorealistic empty background surface, sharp focus, clean com
 // Keep modules imports resolved dynamically for video pipeline
 async function generateVideoViaSVD(modelImgUrl: string, hfToken?: string): Promise<string | null> {
   const { generateVideoViaSVD: originalSVD } = await import("@/utils/ai");
-  return originalSVD(modelImgUrl, hfToken);
+  return originalSVD(modelImgUrl, hfToken as any);
 }
 
 async function generateVideoViaWan21(modelImgUrl: string, prompt?: string, aspectRatio?: string, hfToken?: string): Promise<string | null> {
   const { generateVideoViaWan21: originalWan } = await import("@/utils/ai");
-  return originalWan(modelImgUrl, prompt, aspectRatio, hfToken);
+  return originalWan(modelImgUrl, prompt, aspectRatio, hfToken as any);
 }

@@ -49,6 +49,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { UploadDesignBox } from "@/components/dashboard/UploadDesignBox";
+import { MultiUploadDesignBox } from "@/components/dashboard/MultiUploadDesignBox";
 import { createClient } from "@/utils/supabase/client";
 import { useEffect } from "react";
 import { io } from "socket.io-client";
@@ -133,6 +134,8 @@ export default function StudioPage() {
   const [selectedVideoPose, setSelectedVideoPose] = useState<number>(1);
 
   // Multi-Garment Try-On States
+  const [combineImages, setCombineImages] = useState<string[]>([]);
+  const [combineBackground, setCombineBackground] = useState<string>("");
   const [combineSaree, setCombineSaree] = useState<string>("");
   const [combineBlouse, setCombineBlouse] = useState<string>("");
   const [combineModel, setCombineModel] = useState<string>("");
@@ -843,7 +846,7 @@ export default function StudioPage() {
 
   const isFormValidForGeneration = () => {
     if (activeTab === "combine") {
-      return !!(segmentedSaree && segmentedBlouse && (!isCustomModel || combineModel));
+      return combineImages.length >= 2 && combineImages.length <= 6;
     } else if (activeTab === "video") {
       if (videoMode === "tryon") {
         return !!(uploads["video_saree_image"] && (!videoCustomModel || uploads["video_model_image"]));
@@ -860,12 +863,8 @@ export default function StudioPage() {
   const handleGenerate = async () => {
     // 1. Perform validations first (before switching tab or starting generation)
     if (activeTab === "combine") {
-      if (!segmentedSaree || !segmentedBlouse) {
-        alert(t("Please segment your saree and blouse first!") || "Please segment your saree and blouse first!");
-        return;
-      }
-      if (isCustomModel && !combineModel) {
-        alert(t("Please upload your model image first!") || "Please upload your model image first!");
+      if (combineImages.length < 2 || combineImages.length > 6) {
+        alert(t("Please upload between 2 and 6 model photos first!") || "Please upload between 2 and 6 model photos first!");
         return;
       }
       if (!useMockMode && balance < 1) {
@@ -916,33 +915,9 @@ export default function StudioPage() {
     let actualAiPipeline = aiPipeline;
 
     if (activeTab === "combine") {
-      try {
-        // 1. Export composition from composer canvas
-        const base64Composed = await exportComposition();
-        
-        // 2. Upload composed image to Supabase
-        const composedUrl = await uploadBase64ToSupabase(base64Composed, "multi_garment_composed");
-        if (!composedUrl) {
-          throw new Error("Failed to upload composed outfit to storage");
-        }
-        mainDesignUrl = composedUrl;
-
-        // 3. Set up the model image
-        if (isCustomModel) {
-          finalPoseModelBg = combineModel;
-        } else {
-          finalPoseModelBg = `https://raw.githubusercontent.com/subhashmalaviya/sareeviz_internship_project/main/public/poses/pose${selectedCombinePose}.webp`;
-        }
-
-        actualAiPipeline = "multi_garment";
-      } catch (err: any) {
-        setGenerationError({
-          message: `Failed to compose and upload outfit: ${err.message}`,
-          code: "COMPOSE_FAILED"
-        });
-        setIsGenerating(false);
-        return;
-      }
+      mainDesignUrl = combineImages[0];
+      finalPoseModelBg = combineBackground || null;
+      actualAiPipeline = "combine";
     } else if (activeTab === "image") {
       const mainKey = `${generateFor.toLowerCase().replace(/[^a-z0-9]/g, "_")}_design`;
       const mainUrl = uploads[mainKey] || uploads["saree_design"] || Object.values(uploads)[0];
@@ -1065,8 +1040,6 @@ export default function StudioPage() {
       let posesToRun = [null as number | null];
       if (activeTab === "image" && usePoseLibrary && poseLibraryType === "image" && selectedImagePoses.length > 0) {
         posesToRun = [...selectedImagePoses];
-      } else if (activeTab === "combine" && !isCustomModel) {
-        posesToRun = [selectedCombinePose];
       }
 
       for (let i = 0; i < posesToRun.length; i++) {
@@ -1110,7 +1083,7 @@ export default function StudioPage() {
           outputFormat,
           aspectRatio: activeTab === "video" ? videoAspectRatio : aspectRatio,
           resolution,
-          modelPose: activeTab === "combine" ? DEFAULT_POSES[currentPoseNum ? currentPoseNum - 1 : selectedCombinePose - 1]?.label || "Front Standing" : modelPose,
+          modelPose: activeTab === "combine" ? "Front Standing" : modelPose,
           skinTone,
           backgroundStyle,
           sareeColourHint,
@@ -1118,6 +1091,8 @@ export default function StudioPage() {
           pose_model_bg: jobPoseModelBg,
           useMockMode: useMockMode,
           aiPipeline: actualAiPipeline,
+          combine_images: activeTab === "combine" ? combineImages : null,
+          background_image: activeTab === "combine" ? combineBackground : null,
           additional_designs: {
             ...mergedAdditionalDesigns,
             ...(activeTab === "video" ? {
@@ -2454,137 +2429,232 @@ export default function StudioPage() {
           </div>
             ) : activeTab === "combine" ? (
               <div className="space-y-6">
-                {/* Step 1: Upload Garments */}
+                {/* Step 1: Upload Model Images */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
                       1
                     </span>
-                    <h2 className="text-base font-bold text-gray-900">{t("Upload Garments") || "Upload Garments"}</h2>
+                    <h2 className="text-base font-bold text-gray-900">{t("Upload Model Images")}</h2>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
-                    <UploadDesignBox
-                      label={t("Upload Saree") || "Upload Saree"}
-                      value={combineSaree}
-                      onChange={(url) => setCombineSaree(url)}
-                      placeholderText={t("Saree Image") || "Saree Image"}
-                      helperText={t("Main saree fabric/pattern") || "Main saree fabric"}
-                      heightClass="h-32"
-                    />
-                    <UploadDesignBox
-                      label={t("Upload Blouse") || "Upload Blouse"}
-                      value={combineBlouse}
-                      onChange={(url) => setCombineBlouse(url)}
-                      placeholderText={t("Blouse Design") || "Blouse Design"}
-                      helperText={t("Blouse design/pattern") || "Blouse design"}
-                      heightClass="h-32"
+                  <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-4">
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      {t("Upload 2-6 model photos wearing different designs to combine into one image")}
+                    </p>
+                    <MultiUploadDesignBox
+                      label={t("Model Images") || "Model Images"}
+                      values={combineImages}
+                      onChange={setCombineImages}
+                      maxFiles={6}
+                      minFiles={2}
+                      placeholderText={t("Click to upload multiple files or drag & drop. Batch processing supported") || "Click to upload multiple files"}
+                      helperText={t("Batch processing supported") || "Batch processing supported"}
                     />
                   </div>
                 </div>
 
-                {/* Step 2: Choose Model Pose */}
+                {/* Step 2: Background Image (Optional) */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
+                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
                       2
                     </span>
-                    <h2 className="text-base font-bold text-gray-900">{t("Choose Model Pose") || "Choose Model Pose"}</h2>
+                    <h2 className="text-base font-bold text-gray-900">{t("Background Image (Optional)")}</h2>
                   </div>
-                  
-                  {/* Toggle Mode */}
-                  <div className="flex gap-2 p-1 bg-gray-100 rounded-lg max-w-xs">
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomModel(false)}
-                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${!isCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
-                    >
-                      {t("Preset Poses") || "Preset Poses"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomModel(true)}
-                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${isCustomModel ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
-                    >
-                      {t("Custom Model") || "Custom Model"}
-                    </button>
-                  </div>
-
-                  {!isCustomModel ? (
-                    <div className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
-                      <div className="grid grid-cols-4 gap-2">
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((poseNum) => {
-                          const isSelected = selectedCombinePose === poseNum;
-                          return (
-                            <div
-                              key={poseNum}
-                              onClick={() => setSelectedCombinePose(poseNum)}
-                              className={`relative aspect-[3/4] rounded-lg overflow-hidden cursor-pointer transition-all ${
-                                isSelected ? "ring-2 ring-pink-500 ring-offset-1" : "border border-gray-200 hover:border-gray-300"
-                              }`}
-                            >
-                              <img
-                                src={`/poses/pose${poseNum}.webp`}
-                                alt={`Pose ${poseNum}`}
-                                className="absolute inset-0 w-full h-full object-cover"
-                              />
-                              <div className="absolute inset-x-0 bottom-0 py-1 bg-black/60 flex justify-center z-10">
-                                <span className="text-white text-[10px] font-semibold">
-                                  Pose {poseNum}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
+                  <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-4">
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      {t("Upload a preferred background. If not provided, AI will use a background from one of the model images.")}
+                    </p>
                     <UploadDesignBox
-                      label={t("Model Photo") || "Model Photo"}
-                      value={combineModel}
-                      onChange={(url) => setCombineModel(url)}
-                      placeholderText={t("Click to upload model photo") || "Upload model photo"}
-                      helperText={t("Front facing high-quality model photo") || "High-quality model photo"}
-                      heightClass="h-40"
+                      label={t("Background Image") || "Background Image"}
+                      value={combineBackground}
+                      onChange={setCombineBackground}
+                      placeholderText={t("Click to upload a file or drag & drop") || "Click to upload a file"}
+                      helperText={t("Maximum file size 10 MB") || "Maximum file size 10 MB"}
+                      heightClass="h-32"
                     />
-                  )}
+                  </div>
                 </div>
 
-                {/* Step 3: Segment Backgrounds */}
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-xs font-semibold">
-                      3
-                    </span>
-                    <h2 className="text-base font-bold text-gray-900">{t("Segment & Compose") || "Segment & Compose"}</h2>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-normal">
-                    {t("We will isolate your Saree and Blouse from their backgrounds so you can overlay and drape them on the canvas.")}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={segmentGarments}
-                    disabled={isSegmenting || !combineSaree || !combineBlouse}
-                    className="w-full h-11 bg-gradient-to-r from-purple-500 to-[#db2777] hover:from-purple-600 hover:to-[#be185d] text-white rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {isSegmenting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>{segmentingStatus || "Segmenting..."}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Scissors className="h-4 w-4" />
-                        <span>{t("Isolate & Segment Clothes") || "Isolate & Segment Clothes"}</span>
-                      </>
-                    )}
-                  </button>
-                  
-                  {segmentedSaree && segmentedBlouse && (
-                    <div className="bg-green-50 text-green-700 rounded-xl px-4 py-3 text-xs font-semibold flex items-center gap-2 border border-green-100">
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
-                      <span>{t("Garments segmented! Use the Outfit Composer workspace on the right to arrange them.")}</span>
-                    </div>
-                  )}
+                {/* Step 3: Branding Details */}
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                  <Accordion>
+                    <AccordionItem value="step-3" className="border-0">
+                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                            3
+                          </span>
+                          <h2 className="text-base font-bold text-gray-900">
+                            {t("Branding Details")}
+                          </h2>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-4 px-4 pl-12">
+                        <div className="space-y-6">
+                          <div className="space-y-2 mt-2">
+                            <UploadDesignBox
+                              label={t("Brand Logo") || "Brand Logo"}
+                              value={uploads["image_brand_logo"] || ""}
+                              onChange={(url) => setUploads(prev => ({ ...prev, image_brand_logo: url }))}
+                              placeholderText={t("Click to upload logo or drag & drop") || "Click to upload logo"}
+                              helperText={t("Upload brand logo watermark image.") || "Brand logo watermark"}
+                              heightClass="h-28"
+                            />
+                          </div>
+                          <label className="flex items-start gap-2 cursor-pointer mt-2">
+                            <input
+                              type="checkbox"
+                              checked={addCenterWatermark}
+                              onChange={(e) => setAddCenterWatermark(e.target.checked)}
+                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500"
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-700 leading-tight">
+                                {t("Add brand logo as center watermark")}
+                              </span>
+                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                                {t("Places a faint brand logo in the center of the image (requires brand logo upload).")}
+                              </span>
+                            </div>
+                          </label>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Brand Name")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <input 
+                              type="text" 
+                              value={brandName}
+                              onChange={(e) => setBrandName(e.target.value)}
+                              placeholder={t("e.g. Royal Silks")}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-sm font-semibold text-gray-700">{t("Design Number")} <span className="text-gray-400 font-normal">{t("(Optional)")}</span></span>
+                            <input 
+                              type="text" 
+                              value={designNumber}
+                              onChange={(e) => setDesignNumber(e.target.value)}
+                              placeholder={t("e.g. RS-2024-001")}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder:text-gray-400"
+                            />
+                          </div>
+
+                          {(brandName.trim() !== "" || designNumber.trim() !== "") && (
+                            <div className="space-y-4 pt-2">
+                              <div className="space-y-2">
+                                <span className="text-sm font-semibold text-gray-700">{t("Font Style")}</span>
+                                <div className="flex items-center gap-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">{t("Size:")}</span>
+                                    <div className="flex items-center border border-gray-200 rounded bg-white overflow-hidden h-7">
+                                      <input 
+                                        type="text" 
+                                        value={fontSize} 
+                                        readOnly
+                                        className="w-8 text-center text-[11px] font-bold text-gray-700 bg-transparent outline-none"
+                                      />
+                                      <span className="text-[10px] text-gray-400 mr-1">%</span>
+                                      <div className="flex flex-col border-l border-gray-100">
+                                        <button 
+                                          onClick={() => setFontSize(prev => Math.min(15, prev + 0.5))}
+                                          className="p-0.5 hover:bg-gray-50 text-gray-400 border-b border-gray-100 leading-[0]"
+                                        >
+                                          <ChevronUp className="h-2 w-2" />
+                                        </button>
+                                        <button 
+                                          onClick={() => setFontSize(prev => Math.max(1, prev - 0.5))}
+                                          className="p-0.5 hover:bg-gray-50 text-gray-400 leading-[0]"
+                                        >
+                                          <ChevronDown className="h-2 w-2" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+
+                {/* Step 4: AI Instructions */}
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                  <Accordion>
+                    <AccordionItem value="step-4" className="border-0">
+                      <AccordionTrigger className="px-4 py-3.5 hover:no-underline">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex items-center justify-center shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                            4
+                          </span>
+                          <h2 className="text-base font-bold text-gray-900">
+                            {t("AI Instructions")}
+                          </h2>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-4 px-4 pl-12">
+                        <div className="space-y-6 mt-2">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={optimiseEcommerce}
+                              onChange={(e) => handleOptimiseEcommerceChange(e.target.checked)}
+                              className="mt-1 rounded border-gray-300 text-pink-500 focus:ring-pink-500" 
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-700 leading-tight">
+                                {t("Optimise for Ecommerce Upload")}
+                              </span>
+                              <span className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                                {t("Automatically sets 1K resolution, Portrait (3:4) aspect ratio, and JPEG format.")}
+                              </span>
+                            </div>
+                          </label>
+                          <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
+                            <span className="text-sm font-semibold text-gray-700">{t("Output Format")}</span>
+                            <div className="flex gap-2">
+                              <button
+                                disabled={optimiseEcommerce}
+                                onClick={() => setOutputFormat("png")}
+                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                                  outputFormat === "png" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                                } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
+                              >
+                                PNG
+                              </button>
+                              <button
+                                disabled={optimiseEcommerce}
+                                onClick={() => setOutputFormat("jpeg")}
+                                className={`px-4 py-1.5 rounded text-xs font-bold transition-colors border ${
+                                  outputFormat === "jpeg" ? "bg-pink-50 border-pink-200 text-pink-600" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                                } ${optimiseEcommerce ? "cursor-not-allowed" : ""}`}
+                              >
+                                JPEG
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className={`space-y-2 ${optimiseEcommerce ? "opacity-60" : ""}`}>
+                            <span className="text-sm font-semibold text-gray-700">{t("Resolution")}</span>
+                            <div className="relative">
+                              <select
+                                value={resolution}
+                                onChange={(e) => setResolution(e.target.value)}
+                                disabled={optimiseEcommerce}
+                                className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                              >
+                                <option value="1K">{t("1K")}</option>
+                                <option value="2K">{t("2K")}</option>
+                                <option value="4K">{t("4K")}</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
                 </div>
               </div>
             ) : (
@@ -2832,7 +2902,7 @@ export default function StudioPage() {
 
                           {isDone && displayImg && (
                             <>
-                              {currentGen?.model_settings?.is_mock && currentGen?.model_settings?.generation_type !== "video" ? (
+                              {currentGen?.model_settings?.is_mock && currentGen?.model_settings?.generation_type !== "video" && currentGen?.model_settings?.generation_type !== "combine" ? (
                                 <div className="w-full h-full flex flex-col relative select-none bg-gradient-to-b from-gray-50 to-gray-100">
                                   {/* Top: Model Pose */}
                                   <div className="h-[55%] w-full relative">
@@ -2906,210 +2976,6 @@ export default function StudioPage() {
                           )}
                         </div>
                       </div>
-                    </div>
-                  );
-                }
-
-                // If activeTab === "combine" AND we have segmented garments, show the Outfit Composer
-                if (activeTab === "combine" && segmentedSaree && segmentedBlouse) {
-                  return (
-                    <div className="mb-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                          <Sliders className="h-4 w-4 text-pink-500" />
-                          {t("Outfit Composer") || "Outfit Composer"}
-                        </h3>
-                        <button
-                          onClick={() => {
-                            // Auto arrange defaults
-                            setBlouseLayer({ x: 25, y: 12, scale: 0.5, rotation: 0, zIndex: 1 });
-                            setSareeLayer({ x: 10, y: 35, scale: 0.8, rotation: 0, zIndex: 2 });
-                          }}
-                          className="text-xs font-bold text-pink-600 hover:text-pink-800 transition-colors flex items-center gap-1"
-                        >
-                          <RefreshCcw className="h-3 w-3" />
-                          {t("Auto-Arrange") || "Auto-Arrange"}
-                        </button>
-                      </div>
-
-                      {/* Canvas Container */}
-                      <div className="flex justify-center mb-6">
-                        <div className="relative aspect-[3/4] w-[320px] bg-gradient-to-b from-gray-50 to-white rounded-xl border border-gray-200 overflow-hidden shadow-md">
-                          {/* Blouse Image */}
-                          <img
-                            src={segmentedBlouse}
-                            style={{
-                              position: "absolute",
-                              left: `${blouseLayer.x}%`,
-                              top: `${blouseLayer.y}%`,
-                              width: `${blouseLayer.scale * 100}%`,
-                              transform: `rotate(${blouseLayer.rotation}deg)`,
-                              zIndex: blouseLayer.zIndex,
-                            }}
-                            alt="Segmented Blouse"
-                            className={`cursor-pointer transition-all duration-75 select-none ${
-                              selectedLayer === "blouse" ? "ring-2 ring-pink-500 ring-offset-2 rounded" : ""
-                            }`}
-                            onClick={() => setSelectedLayer("blouse")}
-                          />
-
-                          {/* Saree Image */}
-                          <img
-                            src={segmentedSaree}
-                            style={{
-                              position: "absolute",
-                              left: `${sareeLayer.x}%`,
-                              top: `${sareeLayer.y}%`,
-                              width: `${sareeLayer.scale * 100}%`,
-                              transform: `rotate(${sareeLayer.rotation}deg)`,
-                              zIndex: sareeLayer.zIndex,
-                            }}
-                            alt="Segmented Saree"
-                            className={`cursor-pointer transition-all duration-75 select-none ${
-                              selectedLayer === "saree" ? "ring-2 ring-pink-500 ring-offset-2 rounded" : ""
-                            }`}
-                            onClick={() => setSelectedLayer("saree")}
-                          />
-                          
-                          {/* Selected Indicator Badge */}
-                          <div className="absolute top-3 left-3 bg-pink-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm select-none z-30">
-                            {t("Editing:")} {selectedLayer.toUpperCase()}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Controls Sliders */}
-                      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-4">
-                        {/* Selector Tab */}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setSelectedLayer("saree")}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
-                              selectedLayer === "saree"
-                                ? "bg-white border-pink-200 text-pink-600 shadow-sm"
-                                : "bg-transparent border-transparent text-gray-500 hover:text-gray-700"
-                            }`}
-                          >
-                            {t("Saree Layer")}
-                          </button>
-                          <button
-                            onClick={() => setSelectedLayer("blouse")}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
-                              selectedLayer === "blouse"
-                                ? "bg-white border-pink-200 text-pink-600 shadow-sm"
-                                : "bg-transparent border-transparent text-gray-500 hover:text-gray-700"
-                            }`}
-                          >
-                            {t("Blouse Layer")}
-                          </button>
-                        </div>
-
-                        {/* Sliders */}
-                        {(() => {
-                          const layer = selectedLayer === "saree" ? sareeLayer : blouseLayer;
-                          const setLayer = selectedLayer === "saree" ? setSareeLayer : setBlouseLayer;
-                          
-                          return (
-                            <div className="space-y-3.5">
-                              {/* Position X */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-semibold text-gray-600">
-                                  <span>{t("Position X")}</span>
-                                  <span>{layer.x}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="-50"
-                                  max="150"
-                                  value={layer.x}
-                                  onChange={(e) => setLayer(prev => ({ ...prev, x: parseInt(e.target.value) }))}
-                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                                />
-                              </div>
-
-                              {/* Position Y */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-semibold text-gray-600">
-                                  <span>{t("Position Y")}</span>
-                                  <span>{layer.y}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="-50"
-                                  max="150"
-                                  value={layer.y}
-                                  onChange={(e) => setLayer(prev => ({ ...prev, y: parseInt(e.target.value) }))}
-                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                                />
-                              </div>
-
-                              {/* Scale */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-semibold text-gray-600">
-                                  <span>{t("Scale (Size)")}</span>
-                                  <span>{Math.round(layer.scale * 100)}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="10"
-                                  max="300"
-                                  value={Math.round(layer.scale * 100)}
-                                  onChange={(e) => setLayer(prev => ({ ...prev, scale: parseFloat(e.target.value) / 100 }))}
-                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                                />
-                              </div>
-
-                              {/* Rotation */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-semibold text-gray-600">
-                                  <span>{t("Rotation")}</span>
-                                  <span>{layer.rotation}°</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="-180"
-                                  max="180"
-                                  value={layer.rotation}
-                                  onChange={(e) => setLayer(prev => ({ ...prev, rotation: parseInt(e.target.value) }))}
-                                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                                />
-                              </div>
-
-                              {/* Layer Order */}
-                              <div className="flex justify-between items-center pt-2 border-t border-gray-200/60">
-                                <span className="text-xs font-semibold text-gray-600">{t("Layer Order:")}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (selectedLayer === "saree") {
-                                      setSareeLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
-                                      setBlouseLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
-                                    } else {
-                                      setBlouseLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
-                                      setSareeLayer(prev => ({ ...prev, zIndex: prev.zIndex === 2 ? 1 : 2 }));
-                                    }
-                                  }}
-                                  className="px-3 py-1 bg-white hover:bg-gray-100 border border-gray-200 text-xs font-bold text-gray-700 rounded-md transition-colors shadow-sm"
-                                >
-                                  {selectedLayer === "saree"
-                                    ? sareeLayer.zIndex === 2 ? t("Send Saree to Back") : t("Bring Saree to Front")
-                                    : blouseLayer.zIndex === 2 ? t("Send Blouse to Back") : t("Bring Blouse to Front")}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Main Trigger Call-to-action */}
-                      <button
-                        onClick={handleGenerate}
-                        disabled={isGenerating || !isFormValidForGeneration()}
-                        className="w-full mt-4 h-11 bg-pink-500 hover:bg-pink-600 text-white rounded-lg text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        {t("Generate Multi-Garment Try-On") || "Generate Try-On"}
-                      </button>
                     </div>
                   );
                 }
