@@ -288,9 +288,23 @@ async function createCombineCollage(
     console.log(`[Combine] Starting collage creation for user ${userId}. Images count: ${combineImages.length}`);
     const replicateToken = process.env.REPLICATE_API_TOKEN;
 
-    // 1. Process background image or create default one
+    // 1. Process background image or create default one based on aspect ratio
+    const ratioMatch = aspectRatio ? aspectRatio.match(/^(\d+):(\d+)/) : null;
+    const targetRatio = ratioMatch ? parseInt(ratioMatch[1]) / parseInt(ratioMatch[2]) : null;
+
     let bgWidth = 1200;
     let bgHeight = 800;
+
+    if (targetRatio) {
+      if (targetRatio > 1) {
+        bgWidth = 1200;
+        bgHeight = Math.round(1200 / targetRatio);
+      } else {
+        bgHeight = 1200;
+        bgWidth = Math.round(1200 * targetRatio);
+      }
+    }
+
     let bgImage: any;
     let bgBuffer: Buffer;
 
@@ -298,8 +312,8 @@ async function createCombineCollage(
       try {
         bgBuffer = await loadImageBuffer(backgroundImageUrl);
         const bgMetadata = await sharp(bgBuffer).metadata();
-        bgWidth = bgMetadata.width || 1200;
-        bgHeight = bgMetadata.height || 800;
+        bgWidth = bgMetadata.width || bgWidth;
+        bgHeight = bgMetadata.height || bgHeight;
         bgImage = sharp(bgBuffer);
       } catch (bgErr) {
         console.error("[Combine] Failed to load background image, falling back to neutral canvas:", bgErr);
@@ -379,43 +393,39 @@ async function createCombineCollage(
 
     for (let r = 0; r < rowLayout.length; r++) {
       const itemIndices = rowLayout[r];
-      const targetModelHeightInRow = Math.round(rowHeight * 0.9);
-      
-      const scaledWidths: number[] = [];
-      for (const idx of itemIndices) {
-        const meta = modelMetadatas[idx];
-        const scaledWidth = Math.round(meta.width * (targetModelHeightInRow / meta.height));
-        scaledWidths.push(scaledWidth);
-      }
+      const colsInRow = itemIndices.length;
+      const cellWidth = Math.round(bgWidth / colsInRow);
 
-      const totalWidth = scaledWidths.reduce((sum, w) => sum + w, 0);
+      for (let c = 0; c < colsInRow; c++) {
+        const idx = itemIndices[c];
+        
+        // Resize the image to fit entirely within the cell bounding box (contain)
+        // Leave a 5% padding inside the cell for premium aesthetic spacing
+        const targetWidth = Math.round(cellWidth * 0.9);
+        const targetHeight = Math.round(rowHeight * 0.9);
 
-      let finalModelHeight = targetModelHeightInRow;
-      let finalWidths = [...scaledWidths];
-      if (totalWidth > bgWidth * 0.95) {
-        const scaleFactor = (bgWidth * 0.95) / totalWidth;
-        finalModelHeight = Math.round(targetModelHeightInRow * scaleFactor);
-        finalWidths = scaledWidths.map(w => Math.round(w * scaleFactor));
-      }
-
-      const finalTotalWidth = finalWidths.reduce((sum, w) => sum + w, 0);
-      let currentX = Math.round((bgWidth - finalTotalWidth) / 2);
-      const bottomY = (r + 1) * rowHeight;
-      const topOffset = bottomY - finalModelHeight - Math.round(rowHeight * 0.05);
-
-      for (let i = 0; i < itemIndices.length; i++) {
-        const idx = itemIndices[i];
         const resizedModel = await sharp(processedModelBuffers[idx])
-          .resize({ height: finalModelHeight })
+          .resize({
+            width: targetWidth,
+            height: targetHeight,
+            fit: "contain",
+            background: { r: 255, g: 255, b: 255, alpha: 0 } // transparent background
+          })
           .toBuffer();
+
+        // Center the contained image within the cell
+        const metadata = await sharp(resizedModel).metadata();
+        const actualWidth = metadata.width || targetWidth;
+        const actualHeight = metadata.height || targetHeight;
+
+        const leftOffset = c * cellWidth + Math.round((cellWidth - actualWidth) / 2);
+        const topOffset = r * rowHeight + Math.round((rowHeight - actualHeight) / 2);
 
         composites.push({
           input: resizedModel,
           top: topOffset,
-          left: currentX
+          left: leftOffset
         });
-
-        currentX += finalWidths[i];
       }
     }
 
@@ -432,7 +442,7 @@ async function createCombineCollage(
       genId,
       outputFormat,
       resolution,
-      aspectRatio,
+      undefined, // Disable aspect-ratio fit: "cover" cropping for combined images
       "image/png"
     );
 
@@ -684,7 +694,7 @@ async function runImageBackground(
       if (branding && (branding.brandLogo || branding.brandName || branding.designNumber)) {
         try {
           const finalBuffer = await applyBrandingToUrl(finalImageUrl, branding);
-          const brandedUrl = await uploadBufferToStorage(supabase, finalBuffer, userId, `combine_branded_${Date.now()}`, outputFormat, resolution, aspectRatio);
+          const brandedUrl = await uploadBufferToStorage(supabase, finalBuffer, userId, `combine_branded_${Date.now()}`, outputFormat, resolution, undefined);
           if (brandedUrl) finalImageUrl = brandedUrl;
         } catch (e) {
           console.error("Combine branding failed:", e);
