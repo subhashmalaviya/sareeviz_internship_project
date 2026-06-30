@@ -1,12 +1,70 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import { Languages, MessageCircle, Smartphone, User, ChevronRight } from "lucide-react";
 import { CreditsDialog } from "@/components/dashboard/CreditsDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export function TopNavbar({ displayId }: { displayId: string }) {
   const { language, toggleLanguage, t } = useLanguage();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Register Service Worker
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      const registerSW = () => {
+        navigator.serviceWorker.register("/sw.js")
+          .then((reg) => console.log("Service Worker registered on scope:", reg.scope))
+          .catch((err) => console.error("Service Worker registration failed:", err));
+      };
+
+      if (document.readyState === "complete") {
+        registerSW();
+      } else {
+        window.addEventListener("load", registerSW);
+        return () => window.removeEventListener("load", registerSW);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setIsInstalled(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsInstalled(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) {
+      alert(t("To install this app, click the install icon in your browser's address bar or menu."));
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to PWA prompt: ${outcome}`);
+    setDeferredPrompt(null);
+  };
 
   return (
     <header className="sticky top-0 z-50 h-14 bg-[#1a1625] flex items-center justify-between px-4 md:px-6 shrink-0">
@@ -38,10 +96,15 @@ export function TopNavbar({ displayId }: { displayId: string }) {
         </button>
 
         {/* Install */}
-        <button className="hidden lg:flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm">
-          <Smartphone className="h-4 w-4" />
-          <span>{t("Install")}</span>
-        </button>
+        {!isInstalled && (
+          <button 
+            onClick={handleInstallClick}
+            className="flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm"
+          >
+            <Smartphone className="h-4 w-4 text-pink-400" />
+            <span>{t("Install")}</span>
+          </button>
+        )}
 
         {/* Credits Pill */}
         <CreditsDialog />

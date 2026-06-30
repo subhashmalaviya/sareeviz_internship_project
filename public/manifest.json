@@ -1,0 +1,24 @@
+{
+  "name": "SareeViz AI Fashion Studio",
+  "short_name": "SareeViz",
+  "description": "Turn your apparel designs into studio-quality model photos in minutes.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#13111c",
+  "theme_color": "#d946ef",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo1.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

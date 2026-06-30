@@ -21,6 +21,7 @@ export const metadata: Metadata = {
   title: "AI Generated Fashion Models | SareeViz",
   description:
     "Turn your saree, apparel, and jewelry designs into studio-quality model photos in minutes with SareeViz AI.",
+  manifest: "/manifest.json",
   keywords: [
     "ai fashion models",
     "ai model generator",

@@ -44,6 +44,10 @@ const translations: Record<string, Record<Language, string>> = {
   "Your generated images will appear here": { en: "Your generated images will appear here", hi: "आपकी जेनरेट की गई इमेज यहां दिखाई देंगी" },
   "Help": { en: "Help", hi: "मदद" },
   "Install": { en: "Install", hi: "इंस्टॉल" },
+  "To install this app, click the install icon in your browser's address bar or menu.": {
+    en: "To install this app, click the install icon in your browser's address bar or menu.",
+    hi: "इस ऐप को इंस्टॉल करने के लिए, अपने ब्राउज़र के एड्रेस बार या मेनू में इंस्टॉल आइकन पर क्लिक करें।"
+  },
   "Generate Images": { en: "Generate Images", hi: "इमेज जेनरेट करें" },
   "Image Generation": { en: "Image Generation", hi: "Image Generation" },
   "1 credit": { en: "1 credit", hi: "1 credit" },
