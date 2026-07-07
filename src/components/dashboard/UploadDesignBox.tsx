@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload, X, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+
 
 interface UploadDesignBoxProps {
   label: string;
@@ -35,6 +36,11 @@ export function UploadDesignBox({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(value || null);
+
+  useEffect(() => {
+    setLocalPreview(value || null);
+  }, [value]);
+
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();

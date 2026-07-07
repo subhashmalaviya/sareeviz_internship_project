@@ -48,6 +48,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCredits } from "@/contexts/CreditsContext";
 import { UploadDesignBox } from "@/components/dashboard/UploadDesignBox";
 import { MultiUploadDesignBox } from "@/components/dashboard/MultiUploadDesignBox";
 import { createClient } from "@/utils/supabase/client";
@@ -81,11 +82,11 @@ const getPoseNum = (modelPose: string | undefined): number => {
 
 export default function StudioPage() {
   const { t } = useLanguage();
+  const { balance, setBalance, decrementBalance, refreshCredits } = useCredits();
   const supabase = createClient();
 
   // Dashboard Data State
   const [uploads, setUploads] = useState<Record<string, string>>({});
-  const [balance, setBalance] = useState<number>(0);
   const [recentGenerations, setRecentGenerations] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -185,11 +186,93 @@ export default function StudioPage() {
 
       const savedCurrentGenId = localStorage.getItem("sareeviz_currentGenId");
       if (savedCurrentGenId) setCurrentGenId(savedCurrentGenId);
+
+      const savedSelectedImagePoses = localStorage.getItem("sareeviz_selectedImagePoses");
+      if (savedSelectedImagePoses) setSelectedImagePoses(JSON.parse(savedSelectedImagePoses));
+
+      const savedAddCenterWatermark = localStorage.getItem("sareeviz_addCenterWatermark");
+      if (savedAddCenterWatermark) setAddCenterWatermark(savedAddCenterWatermark === "true");
+
+      const savedBrandName = localStorage.getItem("sareeviz_brandName");
+      if (savedBrandName) setBrandName(savedBrandName);
+
+      const savedDesignNumber = localStorage.getItem("sareeviz_designNumber");
+      if (savedDesignNumber) setDesignNumber(savedDesignNumber);
+
+      const savedFontSize = localStorage.getItem("sareeviz_fontSize");
+      if (savedFontSize) setFontSize(Number(savedFontSize));
+
+      const savedIsBold = localStorage.getItem("sareeviz_isBold");
+      if (savedIsBold) setIsBold(savedIsBold === "true");
+
+      const savedFontColor = localStorage.getItem("sareeviz_fontColor");
+      if (savedFontColor) setFontColor(savedFontColor);
+
+      const savedTextPosition = localStorage.getItem("sareeviz_textPosition");
+      if (savedTextPosition) setTextPosition(savedTextPosition);
+
+      const savedOptimiseEcommerce = localStorage.getItem("sareeviz_optimiseEcommerce");
+      if (savedOptimiseEcommerce) setOptimiseEcommerce(savedOptimiseEcommerce === "true");
+
+      const savedAspectRatio = localStorage.getItem("sareeviz_aspectRatio");
+      if (savedAspectRatio) setAspectRatio(savedAspectRatio);
+
+      const savedResolution = localStorage.getItem("sareeviz_resolution");
+      if (savedResolution) setResolution(savedResolution);
+
+      const savedAiPipeline = localStorage.getItem("sareeviz_aiPipeline");
+      if (savedAiPipeline) setAiPipeline(savedAiPipeline);
+
+      const savedVideoCategory = localStorage.getItem("sareeviz_videoCategory");
+      if (savedVideoCategory) setVideoCategory(savedVideoCategory);
+
+      const savedVideoPrompt = localStorage.getItem("sareeviz_videoPrompt");
+      if (savedVideoPrompt) setVideoPrompt(savedVideoPrompt);
+
+      const savedVideoDuration = localStorage.getItem("sareeviz_videoDuration");
+      if (savedVideoDuration) setVideoDuration(savedVideoDuration);
+
+      const savedVideoAspectRatio = localStorage.getItem("sareeviz_videoAspectRatio");
+      if (savedVideoAspectRatio) setVideoAspectRatio(savedVideoAspectRatio);
+
+      const savedVideoMode = localStorage.getItem("sareeviz_videoMode");
+      if (savedVideoMode) setVideoMode(savedVideoMode as any);
+
+      const savedVideoEngine = localStorage.getItem("sareeviz_videoEngine");
+      if (savedVideoEngine) setVideoEngine(savedVideoEngine as any);
+
+      const savedVideoCustomModel = localStorage.getItem("sareeviz_videoCustomModel");
+      if (savedVideoCustomModel) setVideoCustomModel(savedVideoCustomModel === "true");
+
+      const savedSelectedVideoPose = localStorage.getItem("sareeviz_selectedVideoPose");
+      if (savedSelectedVideoPose) setSelectedVideoPose(Number(savedSelectedVideoPose));
+
+      const savedCombineImages = localStorage.getItem("sareeviz_combineImages");
+      if (savedCombineImages) setCombineImages(JSON.parse(savedCombineImages));
+
+      const savedCombineBackground = localStorage.getItem("sareeviz_combineBackground");
+      if (savedCombineBackground) setCombineBackground(savedCombineBackground);
+
+      const savedCombineSaree = localStorage.getItem("sareeviz_combineSaree");
+      if (savedCombineSaree) setCombineSaree(savedCombineSaree);
+
+      const savedCombineBlouse = localStorage.getItem("sareeviz_combineBlouse");
+      if (savedCombineBlouse) setCombineBlouse(savedCombineBlouse);
+
+      const savedCombineModel = localStorage.getItem("sareeviz_combineModel");
+      if (savedCombineModel) setCombineModel(savedCombineModel);
+
+      const savedIsCustomModel = localStorage.getItem("sareeviz_isCustomModel");
+      if (savedIsCustomModel) setIsCustomModel(savedIsCustomModel === "true");
+
+      const savedSelectedCombinePose = localStorage.getItem("sareeviz_selectedCombinePose");
+      if (savedSelectedCombinePose) setSelectedCombinePose(Number(savedSelectedCombinePose));
     } catch (e) {
       console.error("Error restoring state from localStorage", e);
     }
     setHasMounted(true);
   }, []);
+
 
   // Save state to localStorage on changes
   useEffect(() => {
@@ -286,6 +369,196 @@ export default function StudioPage() {
       }
     }
   }, [currentGenId, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_selectedImagePoses", JSON.stringify(selectedImagePoses));
+    }
+  }, [selectedImagePoses, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_addCenterWatermark", String(addCenterWatermark));
+    }
+  }, [addCenterWatermark, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_brandName", brandName);
+    }
+  }, [brandName, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_designNumber", designNumber);
+    }
+  }, [designNumber, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_fontSize", String(fontSize));
+    }
+  }, [fontSize, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_isBold", String(isBold));
+    }
+  }, [isBold, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_fontColor", fontColor);
+    }
+  }, [fontColor, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_textPosition", textPosition);
+    }
+  }, [textPosition, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_optimiseEcommerce", String(optimiseEcommerce));
+    }
+  }, [optimiseEcommerce, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_aspectRatio", aspectRatio);
+    }
+  }, [aspectRatio, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_resolution", resolution);
+    }
+  }, [resolution, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_aiPipeline", aiPipeline);
+    }
+  }, [aiPipeline, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoCategory", videoCategory);
+    }
+  }, [videoCategory, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoPrompt", videoPrompt);
+    }
+  }, [videoPrompt, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoDuration", videoDuration);
+    }
+  }, [videoDuration, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoAspectRatio", videoAspectRatio);
+    }
+  }, [videoAspectRatio, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoMode", videoMode);
+    }
+  }, [videoMode, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoEngine", videoEngine);
+    }
+  }, [videoEngine, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_videoCustomModel", String(videoCustomModel));
+    }
+  }, [videoCustomModel, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_selectedVideoPose", String(selectedVideoPose));
+    }
+  }, [selectedVideoPose, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_combineImages", JSON.stringify(combineImages));
+    }
+  }, [combineImages, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_combineBackground", combineBackground);
+    }
+  }, [combineBackground, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_combineSaree", combineSaree);
+    }
+  }, [combineSaree, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_combineBlouse", combineBlouse);
+    }
+  }, [combineBlouse, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_combineModel", combineModel);
+    }
+  }, [combineModel, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_isCustomModel", String(isCustomModel));
+    }
+  }, [isCustomModel, hasMounted]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sareeviz_selectedCombinePose", String(selectedCombinePose));
+    }
+  }, [selectedCombinePose, hasMounted]);
+
 
   // Socket.io client setup
   useEffect(() => {
@@ -646,18 +919,18 @@ export default function StudioPage() {
     fetchDashboardData();
   }, []);
 
-  // Supabase Realtime subscription for generation and credit updates
+  // Supabase Realtime subscription for generation updates
   useEffect(() => {
     let activeChannel: any;
-    let creditsChannel: any;
     let isMounted = true;
 
     const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !isMounted) return;
 
+      const channelName = `generations-realtime-${user.id}-${Math.random().toString(36).substring(7)}`;
       activeChannel = supabase
-        .channel(`generations-realtime-${user.id}`)
+        .channel(channelName)
         .on(
           "postgres_changes",
           {
@@ -677,33 +950,19 @@ export default function StudioPage() {
               
               if (payload.new.status === "done" || payload.new.status === "failed") {
                 fetchDashboardData();
+                refreshCredits();
               }
             } else if (payload.eventType === "DELETE") {
               setRecentGenerations((prev) => prev.filter((g) => g.id !== payload.old.id));
             }
           }
-        )
-        .subscribe();
+        );
 
-      creditsChannel = supabase
-        .channel(`credits-realtime-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "credits",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            console.log("Realtime credit update received:", payload);
-            const newPayload = payload.new as any;
-            if (newPayload && typeof newPayload.balance === "number") {
-              setBalance(newPayload.balance);
-            }
-          }
-        )
-        .subscribe();
+      if (isMounted) {
+        activeChannel.subscribe();
+      } else {
+        supabase.removeChannel(activeChannel);
+      }
     };
 
     setupRealtime();
@@ -712,9 +971,6 @@ export default function StudioPage() {
       isMounted = false;
       if (activeChannel) {
         supabase.removeChannel(activeChannel);
-      }
-      if (creditsChannel) {
-        supabase.removeChannel(creditsChannel);
       }
     };
   }, []);
@@ -760,6 +1016,7 @@ export default function StudioPage() {
         
         if (finishedAny) {
           fetchDashboardData();
+          refreshCredits();
         }
       }
     }, 4000);
@@ -795,7 +1052,107 @@ export default function StudioPage() {
     }
   };
 
+  const handleResetForm = () => {
+    if (confirm(t("Are you sure you want to reset all inputs and uploaded files?") || "Are you sure you want to reset all inputs and uploaded files?")) {
+      // Clear state
+      setUploads({});
+      setGenerateFor("saree");
+      setModelPose("Front Standing");
+      setSkinTone("Wheatish");
+      setBackgroundStyle("Luxury Palace / Haveli");
+      setSareeColourHint("");
+      setCatalogueOption("display_rack");
+      setPhotographyStyle("model");
+      setOutputFormat("png");
+      setUsePoseLibrary(false);
+      setPoseLibraryType("prompt");
+      setNumPoses(5);
+      setPosePrompts(DEFAULT_POSES.map(p => p.desc));
+      setExpandedPose(1);
+      setSelectedImagePoses([]);
+      setAddCenterWatermark(false);
+      setBrandName("");
+      setDesignNumber("");
+      setFontSize(4.0);
+      setIsBold(true);
+      setFontColor("white");
+      setTextPosition("top_right");
+      setOptimiseEcommerce(false);
+      setAspectRatio("3:4 - Portrait");
+      setResolution("1K");
+      setAiPipeline("auto");
+
+      // Video states
+      setVideoCategory("apparel");
+      setVideoPrompt("");
+      setVideoDuration("15s");
+      setVideoAspectRatio("9:16 (Reels/Shorts)");
+      setVideoMode("tryon");
+      setVideoEngine("wan2.1");
+      setVideoCustomModel(false);
+      setSelectedVideoPose(1);
+
+      // Combine states
+      setCombineImages([]);
+      setCombineBackground("");
+      setCombineSaree("");
+      setCombineBlouse("");
+      setCombineModel("");
+      setIsCustomModel(false);
+      setSelectedCombinePose(1);
+
+      // Clear LocalStorage cache
+      const keys = [
+        "sareeviz_uploads",
+        "sareeviz_generateFor",
+        "sareeviz_modelPose",
+        "sareeviz_skinTone",
+        "sareeviz_backgroundStyle",
+        "sareeviz_sareeColourHint",
+        "sareeviz_catalogueOption",
+        "sareeviz_photographyStyle",
+        "sareeviz_outputFormat",
+        "sareeviz_usePoseLibrary",
+        "sareeviz_selectedImagePoses",
+        "sareeviz_addCenterWatermark",
+        "sareeviz_brandName",
+        "sareeviz_designNumber",
+        "sareeviz_fontSize",
+        "sareeviz_isBold",
+        "sareeviz_fontColor",
+        "sareeviz_textPosition",
+        "sareeviz_optimiseEcommerce",
+        "sareeviz_aspectRatio",
+        "sareeviz_resolution",
+        "sareeviz_aiPipeline",
+        "sareeviz_videoCategory",
+        "sareeviz_videoPrompt",
+        "sareeviz_videoDuration",
+        "sareeviz_videoAspectRatio",
+        "sareeviz_videoMode",
+        "sareeviz_videoEngine",
+        "sareeviz_videoCustomModel",
+        "sareeviz_selectedVideoPose",
+        "sareeviz_combineImages",
+        "sareeviz_combineBackground",
+        "sareeviz_combineSaree",
+        "sareeviz_combineBlouse",
+        "sareeviz_combineModel",
+        "sareeviz_isCustomModel",
+        "sareeviz_selectedCombinePose"
+      ];
+      keys.forEach(key => {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {
+          console.error("Error removing key from localStorage", e);
+        }
+      });
+    }
+  };
+
   const handleDeleteProject = async (id: string) => {
+
     try {
       setDeletingId(id);
       const { error } = await supabase
@@ -818,15 +1175,7 @@ export default function StudioPage() {
       if (!user) return;
 
       // Fetch credits
-      const { data: creditsData } = await supabase
-        .from("credits")
-        .select("balance")
-        .eq("user_id", user.id)
-        .single();
-      
-      if (creditsData) {
-        setBalance(creditsData.balance);
-      }
+      refreshCredits();
 
       // Fetch recent generations
       const { data: gensData } = await supabase
@@ -867,7 +1216,7 @@ export default function StudioPage() {
         alert(t("Please upload between 2 and 6 model photos first!") || "Please upload between 2 and 6 model photos first!");
         return;
       }
-      if (!useMockMode && balance < 1) {
+      if (!useMockMode && balance !== null && balance < 1) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -887,7 +1236,7 @@ export default function StudioPage() {
           return;
         }
       }
-      if (!useMockMode && balance < 1) {
+      if (!useMockMode && balance !== null && balance < 1) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -899,7 +1248,7 @@ export default function StudioPage() {
         alert(t("Please upload your main design first!") || "Please upload your main design first!");
         return;
       }
-      if (!useMockMode && balance < 1) {
+      if (!useMockMode && balance !== null && balance < 1) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -1141,6 +1490,7 @@ export default function StudioPage() {
             message: errMsg,
             code: "GEN_FAILED"
           });
+          refreshCredits();
           break;
         }
 
@@ -1155,10 +1505,11 @@ export default function StudioPage() {
         setRightTab("generate");
 
         if (!useMockMode) {
-          setBalance(prev => Math.max(0, prev - 1));
+          decrementBalance(1);
         }
 
         fetchDashboardData();
+        refreshCredits();
       }
     } catch (err: any) {
       console.error("Generation error:", err);
@@ -1166,6 +1517,7 @@ export default function StudioPage() {
         message: err.message || "Failed to start generation. Please try again.",
         code: "CLIENT_ERROR"
       });
+      refreshCredits();
     } finally {
       setIsGenerating(false);
     }
@@ -1187,41 +1539,54 @@ export default function StudioPage() {
         <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative">
           <div className="flex-1 overflow-y-auto pb-20 scrollbar-thin">
           {/* Tabs row */}
-          <div className="flex items-center gap-0 border-b border-gray-200 px-5 pt-3">
+          <div className="flex items-center justify-between border-b border-gray-200 px-5 pt-3">
+            <div className="flex items-center gap-0">
+              <button
+                onClick={() => setActiveTab("image")}
+                className={`flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "image"
+                    ? "border-gray-900 text-gray-900"
+                    : "border-transparent text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <ImageIcon className="h-4 w-4" /> {t("Image")}
+              </button>
+              <button
+                onClick={() => setActiveTab("video")}
+                className={`flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "video"
+                    ? "border-gray-900 text-gray-900"
+                    : "border-transparent text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <Video className="h-4 w-4" /> {t("Video")}
+              </button>
+              <button
+                onClick={() => setActiveTab("combine")}
+                className={`relative flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "combine"
+                    ? "border-gray-900 text-gray-900"
+                    : "border-transparent text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <Layers className="h-4 w-4" /> {t("Combine")}
+                <span className="absolute -top-0.5 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 py-px rounded uppercase leading-none">
+                  New
+                </span>
+              </button>
+            </div>
+
+            {/* Reset Button */}
             <button
-              onClick={() => setActiveTab("image")}
-              className={`flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "image"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-400 hover:text-gray-600"
-              }`}
+              onClick={handleResetForm}
+              className="flex items-center gap-1.5 px-3 pb-3 text-xs text-red-500 hover:text-red-600 font-semibold transition-colors shrink-0"
+              title={t("Reset all inputs to default")}
             >
-              <ImageIcon className="h-4 w-4" /> {t("Image")}
-            </button>
-            <button
-              onClick={() => setActiveTab("video")}
-              className={`flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "video"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              <Video className="h-4 w-4" /> {t("Video")}
-            </button>
-            <button
-              onClick={() => setActiveTab("combine")}
-              className={`relative flex items-center gap-1.5 px-4 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "combine"
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              <Layers className="h-4 w-4" /> {t("Combine")}
-              <span className="absolute -top-0.5 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 py-px rounded uppercase leading-none">
-                New
-              </span>
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{t("Reset")}</span>
             </button>
           </div>
+
 
           {/* Form content */}
           <div className="px-5 py-5 space-y-6">

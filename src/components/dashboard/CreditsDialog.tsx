@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Sparkles, Info, Star } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCredits } from "@/contexts/CreditsContext";
 import { createClient } from "@/utils/supabase/client";
 import {
   Dialog,
@@ -36,10 +37,10 @@ const loadRazorpayScript = () => {
 
 export function CreditsDialog() {
   const { t } = useLanguage();
+  const { balance, setBalance, refreshCredits } = useCredits();
   const supabase = createClient();
 
   const [selectedId, setSelectedId] = useState("p3");
-  const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -114,6 +115,7 @@ export function CreditsDialog() {
             if (verifyData.credits !== undefined) {
               setBalance(verifyData.credits);
             }
+            refreshCredits();
           } catch (err: any) {
             console.error(err);
             setErrorMsg(err.message || "Failed to verify payment. Please contact support.");
@@ -144,47 +146,6 @@ export function CreditsDialog() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data } = await supabase
-          .from("credits")
-          .select("balance")
-          .eq("user_id", user.id)
-          .single();
-
-        if (data) {
-          setBalance(data.balance);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchBalance();
-
-    // Subscribe to Postgres changes on 'credits' table for real-time updates
-    const channel = supabase
-      .channel("header-credits-realtime")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "credits" },
-        (payload) => {
-          if (payload.new && typeof payload.new.balance === "number") {
-            setBalance(payload.new.balance);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   return (
     <Dialog>
