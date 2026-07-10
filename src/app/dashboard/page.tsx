@@ -1210,13 +1210,20 @@ export default function StudioPage() {
   };
 
   const handleGenerate = async () => {
+    // Calculate required credits
+    let requiredCredits = 1;
+    if (activeTab === "video") {
+      const seconds = parseInt(videoDuration, 10);
+      requiredCredits = isNaN(seconds) ? 15 : seconds;
+    }
+
     // 1. Perform validations first (before switching tab or starting generation)
     if (activeTab === "combine") {
       if (combineImages.length < 2 || combineImages.length > 6) {
         alert(t("Please upload between 2 and 6 model photos first!") || "Please upload between 2 and 6 model photos first!");
         return;
       }
-      if (!useMockMode && balance !== null && balance < 1) {
+      if (!useMockMode && balance !== null && balance < requiredCredits) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -1236,7 +1243,7 @@ export default function StudioPage() {
           return;
         }
       }
-      if (!useMockMode && balance !== null && balance < 1) {
+      if (!useMockMode && balance !== null && balance < requiredCredits) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -1248,7 +1255,7 @@ export default function StudioPage() {
         alert(t("Please upload your main design first!") || "Please upload your main design first!");
         return;
       }
-      if (!useMockMode && balance !== null && balance < 1) {
+      if (!useMockMode && balance !== null && balance < requiredCredits) {
         alert(t("Insufficient credits! Please buy more credits.") || "Insufficient credits! Please buy more credits.");
         return;
       }
@@ -1455,6 +1462,7 @@ export default function StudioPage() {
           },
           catalogueOption: catalogueOption,
           generation_type: activeTab,
+          video_duration: activeTab === "video" ? videoDuration : null,
           branding: {
             brandLogo: uploads["image_brand_logo"] || null,
             addCenterWatermark,
@@ -1505,7 +1513,7 @@ export default function StudioPage() {
         setRightTab("generate");
 
         if (!useMockMode) {
-          decrementBalance(1);
+          decrementBalance(requiredCredits);
         }
 
         fetchDashboardData();
@@ -3066,7 +3074,7 @@ export default function StudioPage() {
               </>
             ) : activeTab === "video" ? (
               <>
-                <Video className="h-4 w-4" /> {t("Generate Video")}
+                <Video className="h-4 w-4" /> {t("Generate Video")} ({parseInt(videoDuration) || 15} {t("credits")})
               </>
             ) : (
               <>

@@ -1524,9 +1524,13 @@ async function runVideoBackground(
         .single();
 
       if (currentCredits) {
+        const durationStr = body.video_duration || "15s";
+        const seconds = parseInt(durationStr, 10);
+        const requiredCredits = isNaN(seconds) ? 15 : seconds;
+
         await supabase
           .from("credits")
-          .update({ balance: currentCredits.balance + 1 })
+          .update({ balance: currentCredits.balance + requiredCredits })
           .eq("user_id", userId);
       }
     }
@@ -1567,6 +1571,7 @@ export async function POST(request: Request) {
       generation_type,
       combine_images,
       background_image,
+      video_duration,
     } = body;
 
     if (generation_type === "combine") {
@@ -1611,7 +1616,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!useMockMode && credits.balance < 1) {
+    let requiredCredits = 1;
+    if (generation_type === "video") {
+      const durationStr = video_duration || "15s";
+      const seconds = parseInt(durationStr, 10);
+      requiredCredits = isNaN(seconds) ? 15 : seconds;
+    }
+
+    if (!useMockMode && credits.balance < requiredCredits) {
       return NextResponse.json(
         { error: "Insufficient credits" },
         { status: 400 }
@@ -1622,7 +1634,7 @@ export async function POST(request: Request) {
     if (!useMockMode) {
       await supabase
         .from("credits")
-        .update({ balance: Math.max(0, credits.balance - 1) })
+        .update({ balance: Math.max(0, credits.balance - requiredCredits) })
         .eq("user_id", user.id);
     }
 
