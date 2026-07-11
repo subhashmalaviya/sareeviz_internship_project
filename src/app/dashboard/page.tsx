@@ -118,6 +118,7 @@ export default function StudioPage() {
   const [resolution, setResolution] = useState("1K");
   const [activeTab, setActiveTab] = useState<"image" | "video" | "combine">("image");
   const [rightTab, setRightTab] = useState<"generate" | "history">("generate");
+  const [mobileActiveView, setMobileActiveView] = useState<"generator" | "results">("generator");
   const [selectedVideo, setSelectedVideo] = useState<{title: string, src: string} | null>(null);
   const [currentGenId, setCurrentGenId] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<{message: string, code?: string} | null>(null);
@@ -1263,6 +1264,7 @@ export default function StudioPage() {
 
     // 2. Switch tab and start generation
     setRightTab("generate");
+    setMobileActiveView("results");
     setIsGenerating(true);
 
     let mainDesignUrl = "";
@@ -1541,10 +1543,44 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-56px)] overflow-hidden flex flex-col lg:flex-row bg-[#F8F9FB] justify-center w-full">
-      <div className="flex w-full max-w-[1400px] mx-auto shadow-sm">
+    <div className="h-[calc(100dvh-56px)] overflow-hidden flex flex-col bg-[#F8F9FB] justify-center w-full">
+      <div className="flex flex-col md:flex-row w-full max-w-[1400px] mx-auto shadow-sm h-full overflow-hidden">
+        {/* Mobile view selector */}
+        <div className="flex md:hidden bg-white border-b border-gray-200 w-full shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileActiveView("generator")}
+            className={`flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-colors ${
+              mobileActiveView === "generator"
+                ? "border-pink-500 text-pink-600"
+                : "border-transparent text-gray-500"
+            }`}
+          >
+            {t("Generator")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileActiveView("results")}
+            className={`flex-1 py-3 text-center text-sm font-semibold border-b-2 transition-colors relative ${
+              mobileActiveView === "results"
+                ? "border-pink-500 text-pink-600"
+                : "border-transparent text-gray-500"
+            }`}
+          >
+            {t("Results & Gallery")}
+            {isGenerating && (
+              <span className="absolute top-3.5 right-6 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* ─── LEFT COLUMN ─── */}
-        <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative">
+        <div className={`w-full md:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative ${
+          mobileActiveView === "generator" ? "flex" : "hidden md:flex"
+        }`}>
           <div className="flex-1 overflow-y-auto pb-20 scrollbar-thin">
           {/* Tabs row */}
           <div className="flex items-center justify-between border-b border-gray-200 px-5 pt-3">
@@ -3086,7 +3122,9 @@ export default function StudioPage() {
       </div>
 
   {/* ─── RIGHT COLUMN ─── */}
-  <div className="flex-1 overflow-y-auto">
+  <div className={`flex-1 overflow-y-auto ${
+    mobileActiveView === "results" ? "block" : "hidden md:block"
+  }`}>
     <div className="max-w-4xl mx-auto px-5 md:px-8 py-5 flex flex-col min-h-full">
       {/* Pricing Box - Always Visible */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">

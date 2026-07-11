@@ -69,7 +69,7 @@ export function TopNavbar({ displayId }: { displayId: string }) {
   return (
     <header className="sticky top-0 z-50 h-14 bg-[#1a1625] flex items-center justify-between px-4 md:px-6 shrink-0">
       {/* Left: Logo */}
-      <Link href="/dashboard" className="flex items-center gap-2">
+      <Link href="/dashboard" className="flex items-center gap-2 ml-10 md:ml-0">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500 to-pink-600">
           <span className="text-white font-bold text-sm">S</span>
         </div>
@@ -83,16 +83,20 @@ export function TopNavbar({ displayId }: { displayId: string }) {
         {/* Language Switcher */}
         <button 
           onClick={toggleLanguage}
-          className="hidden sm:flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm"
+          className="flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm"
+          title={language === "en" ? "हिंदी" : "English"}
         >
-          <Languages className="h-4 w-4" />
-          <span>{language === "en" ? "हिंदी" : "English"}</span>
+          <Languages className="h-4.5 w-4.5" />
+          <span className="hidden sm:inline">{language === "en" ? "हिंदी" : "English"}</span>
         </button>
 
         {/* Help */}
-        <button className="hidden md:flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm">
-          <MessageCircle className="h-4 w-4 text-green-400" />
-          <span>{t("Help")}</span>
+        <button 
+          className="flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm"
+          title={t("Help")}
+        >
+          <MessageCircle className="h-4.5 w-4.5 text-green-400" />
+          <span className="hidden md:inline">{t("Help")}</span>
         </button>
 
         {/* Install */}
@@ -100,9 +104,10 @@ export function TopNavbar({ displayId }: { displayId: string }) {
           <button 
             onClick={handleInstallClick}
             className="flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors text-sm"
+            title={t("Install")}
           >
-            <Smartphone className="h-4 w-4 text-pink-400" />
-            <span>{t("Install")}</span>
+            <Smartphone className="h-4.5 w-4.5 text-pink-400" />
+            <span className="hidden sm:inline">{t("Install")}</span>
           </button>
         )}
 

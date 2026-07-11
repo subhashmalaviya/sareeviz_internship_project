@@ -202,7 +202,9 @@ const translations: Record<string, Record<Language, string>> = {
   "Combine Feature": { en: "Combine Feature", hi: "कंबाइन फीचर" },
   "Combine multiple designs into a single look. Coming soon!": { en: "Combine multiple designs into a single look. Coming soon!", hi: "एक ही लुक में कई डिज़ाइन कंबाइन करें। जल्द आ रहा है!" },
   "Size": { en: "Size", hi: "साइज़" },
-  "Color": { en: "Color", hi: "रंग" }
+  "Color": { en: "Color", hi: "रंग" },
+  "Generator": { en: "Generator", hi: "जेनरेटर" },
+  "Results & Gallery": { en: "Results & Gallery", hi: "परिणाम और गैलरी" }
 };
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);

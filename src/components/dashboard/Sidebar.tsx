@@ -63,7 +63,7 @@ export function Sidebar() {
 
       {/* Desktop & Mobile Sidebar Container */}
       <aside
-        className={`fixed md:sticky top-14 h-[calc(100vh-56px)] left-0 z-40 flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
+        className={`fixed md:sticky top-14 h-[calc(100dvh-56px)] left-0 z-50 flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
           ${isCollapsed ? "w-16" : "w-64"}
           ${isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
           shrink-0 shadow-sm
