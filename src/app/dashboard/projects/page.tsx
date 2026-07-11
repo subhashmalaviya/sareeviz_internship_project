@@ -106,7 +106,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[#F8F9FB] px-4 md:px-8 py-8 w-full max-w-6xl mx-auto">
+    <div className="h-full overflow-y-auto bg-[#F8F9FB] px-4 md:px-8 py-8 w-full max-w-6xl mx-auto">
       {/* Top Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">

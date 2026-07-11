@@ -26,7 +26,7 @@ export default async function DashboardLayout({
   return (
     <LanguageProvider>
       <CreditsProvider>
-        <div className="flex flex-col min-h-screen bg-[#F8F9FB]">
+        <div className="flex flex-col h-dvh overflow-hidden bg-[#F8F9FB]">
           {/* Top Navbar Header */}
           <TopNavbar displayId={displayId} />
 

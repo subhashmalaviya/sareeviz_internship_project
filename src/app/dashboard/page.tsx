@@ -1578,10 +1578,10 @@ export default function StudioPage() {
         </div>
 
         {/* ─── LEFT COLUMN ─── */}
-        <div className={`w-full md:w-[380px] xl:w-[420px] shrink-0 border-r border-gray-200 bg-white flex flex-col h-full relative ${
+        <div className={`w-full flex-1 min-h-0 md:flex-none md:w-[380px] xl:w-[420px] md:shrink-0 border-r border-gray-200 bg-white flex flex-col md:h-full relative ${
           mobileActiveView === "generator" ? "flex" : "hidden md:flex"
         }`}>
-          <div className="flex-1 overflow-y-auto pb-20 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto md:pb-20 scrollbar-thin">
           {/* Tabs row */}
           <div className="flex items-center justify-between border-b border-gray-200 px-5 pt-3">
             <div className="flex items-center gap-0">
@@ -3077,7 +3077,7 @@ export default function StudioPage() {
         </div>
 
         {/* Sticky Generate Button */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-20 flex flex-col gap-2.5">
+        <div className="md:absolute md:bottom-0 md:left-0 md:right-0 p-4 bg-white border-t border-gray-100 z-20 flex flex-col gap-2.5 w-full shrink-0">
           <div className="flex items-center justify-between text-xs text-gray-500 font-medium px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="h-3.5 w-3.5 text-pink-500" />
@@ -3122,7 +3122,7 @@ export default function StudioPage() {
       </div>
 
   {/* ─── RIGHT COLUMN ─── */}
-  <div className={`flex-1 overflow-y-auto ${
+  <div className={`flex-1 min-h-0 overflow-y-auto ${
     mobileActiveView === "results" ? "block" : "hidden md:block"
   }`}>
     <div className="max-w-4xl mx-auto px-5 md:px-8 py-5 flex flex-col min-h-full">

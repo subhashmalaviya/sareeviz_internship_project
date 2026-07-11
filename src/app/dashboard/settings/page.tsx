@@ -221,7 +221,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[#F8F9FB] px-4 md:px-8 py-8 w-full max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto bg-[#F8F9FB] px-4 md:px-8 py-8 w-full max-w-5xl mx-auto">
       {/* Page Header */}
       <div className="flex items-center gap-3 mb-8">
         <div className="h-10 w-10 rounded-xl bg-pink-500/10 flex items-center justify-center">
